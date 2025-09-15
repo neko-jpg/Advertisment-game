@@ -1,14 +1,24 @@
+
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:provider/provider.dart';
+import 'game_provider.dart';
+import 'obstacle_provider.dart';
+import 'line_provider.dart';
+import 'ad_provider.dart';
+import 'coin_provider.dart';
+import 'sound_provider.dart';
+import 'game_screen.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  MobileAds.instance.initialize();
-  runApp(const MyApp());
+  await MobileAds.instance.initialize();
+
+  runApp(const QuickDrawDashApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class QuickDrawDashApp extends StatelessWidget {
+  const QuickDrawDashApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -17,29 +27,43 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.blue,
         visualDensity: VisualDensity.adaptivePlatformDensity,
+        scaffoldBackgroundColor: const Color(0xFFF0F8FF),
+        textTheme: const TextTheme(
+          bodyLarge: TextStyle(fontFamily: 'PressStart2P', fontSize: 18),
+          titleLarge: TextStyle(fontFamily: 'PressStart2P', fontSize: 24, fontWeight: FontWeight.bold),
+        ),
       ),
-      home: const GameScreen(),
+      home: const GameScreenWrapper(), // Use a wrapper to provide the providers
+      debugShowCheckedModeBanner: false,
     );
   }
 }
 
-class GameScreen extends StatefulWidget {
-  const GameScreen({super.key});
+class GameScreenWrapper extends StatelessWidget {
+  const GameScreenWrapper({super.key});
 
-  @override
-  _GameScreenState createState() => _GameScreenState();
-}
-
-class _GameScreenState extends State<GameScreen> {
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Quick Draw Dash'),
-      ),
-      body: Center(
-        child: Text('Game Canvas Placeholder'),
-      ),
+    return MultiProvider(
+      providers: [
+        Provider(create: (_) => SoundProvider()), // Add SoundProvider
+        ChangeNotifierProvider(create: (_) => AdProvider()),
+        ChangeNotifierProvider(create: (_) => LineProvider()),
+        ChangeNotifierProvider(create: (_) => ObstacleProvider()),
+        ChangeNotifierProvider(create: (_) => CoinProvider()),
+        ChangeNotifierProxyProvider4<AdProvider, LineProvider, ObstacleProvider, CoinProvider, GameProvider>(
+          create: (context) => GameProvider(
+            adProvider: context.read<AdProvider>(),
+            lineProvider: context.read<LineProvider>(),
+            obstacleProvider: context.read<ObstacleProvider>(),
+            coinProvider: context.read<CoinProvider>(),
+            soundProvider: context.read<SoundProvider>(), // Pass SoundProvider
+          ),
+          update: (_, ad, line, obstacle, coin, game) =>
+              game!..updateDependencies(ad, line, obstacle, coin),
+        ),
+      ],
+      child: const GameScreen(),
     );
   }
 }

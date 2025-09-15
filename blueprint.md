@@ -1,49 +1,71 @@
-# Blueprint: Quick Draw Dash MVP
+# Project Blueprint: Quick Draw Dash
 
-## Overview
+## 1. Overview & MVP Goal
 
-This document outlines the design, features, and development plan for the "Quick Draw Dash" mobile game MVP. The project is a hyper-casual, ad-supported game built with Flutter, targeting both iOS and Android platforms.
+-   **Genre:** 1-tap/swipe drawing-based endless runner.
+-   **Platform:** Flutter (iOS & Android).
+-   **Session Length:** 60-120 seconds.
+-   **Monetization:** Rewarded ads (primary) and interstitial ads (secondary).
+-   **MVP Goal:** Achieve D1 Retention ≥ 35%, ARPDAU ≥ $0.05, and an ad view rate ≥ 30%.
 
-## Style, Design, and Features
+---
 
-### Core Concept
-- **Game:** A 2D endless runner where the player draws lines on the screen to navigate and avoid obstacles.
-- **Objective:** Achieve the highest score possible by surviving as long as you can.
-- **Target Audience:** Casual gamers, commuting users (ages 15-35).
+## 2. Roadmap to Full Version
 
-### Visual Design
-- **Aesthetics:** Colorful and vibrant visuals with a clean, minimalist UI.
-- **Effects:** Glowing effects for the drawn lines and satisfying particle effects for feedback (e.g., collecting items, near misses).
-- **Layout:** Simple and intuitive, with a focus on the gameplay area.
+This document outlines the phased development plan to build a feature-complete version of the game.
 
-### Core Mechanics
-- **Drawing Control:** Players swipe on the screen to draw lines that act as platforms or ramps for the player character.
-- **Endless Progression:** The game's speed and difficulty will gradually increase over time.
-- **Scoring:** The score will be based on the distance traveled.
+-   **Phase 1: Coin System (Completed)**
+    -   [x] Implement collectible coins within the game world.
+    -   [x] Display the collected coin count on the UI.
+    -   [x] Create logic for coin-player collision.
 
-### Monetization
-- **Primary Model:** In-app advertising using Google AdMob.
-- **Ad Types:**
-    - **Rewarded Video Ads:** Allow players to continue after a failure or receive in-game boosts.
-    - **Interstitial Ads:** Displayed between game sessions (e.g., every 3-5 minutes).
+-   **Phase 2: Sound & Music (Completed)**
+    -   [x] Integrate the `audioplayers` package.
+    -   [x] Add background music (BGM).
+    -   [x] Add sound effects (SFX) for jumping, collecting coins, and game over.
 
-## Current Development Plan
+-   **Phase 3: Interstitial Ads (Completed)**
+    -   [x] Integrate interstitial ads to be shown periodically on game over.
 
-The current goal is to build the foundational structure of the application.
+-   **Phase 4: Firebase Analytics (In Progress)**
+    -   Integrate `firebase_analytics`.
+    -   Log key events like `game_start`, `game_end`, `coins_collected`, `ad_watched`.
 
-### Phase 1: Project Setup & Core Game Structure
+-   **Phase 5: Visual Enhancements**
+    -   Replace the player circle with an animated sprite.
+    -   Improve the visual design of the background and obstacles.
 
-1.  **Initialize Project:**
-    *   Add `google_mobile_ads` dependency for ad integration.
-    *   Configure Firebase for backend services if needed.
-2.  **Create Blueprint:**
-    *   Establish `blueprint.md` to track project goals and progress.
-3.  **Develop Main Game Screen:**
-    *   Remove the default Flutter counter application.
-    *   Implement a basic game screen layout with a placeholder for the game canvas.
-    *   Initialize the Google Mobile Ads SDK within the app.
-4.  **Implement Drawing Canvas:**
-    *   Create a widget that captures user touch input and draws lines on the screen.
-5.  **Basic Game Loop:**
-    *   Create a simple player character and obstacle.
-    *   Implement game logic where the player character moves forward and interacts with drawn lines and obstacles.
+---
+
+## 3. Current Implementation Details
+
+-   **Coin System:** Players can collect coins that appear on the screen. The total is displayed in the UI.
+-   **Endless Runner Core:** The player can jump and must avoid obstacles scrolling from the right.
+-   **Drawing Mechanic:** The player can draw platforms to run on (1.5s lifetime, 1.2s cooldown).
+-   **Game Over & Restart:** Collision with an obstacle triggers a "Game Over" state.
+-   **Rewarded Ad for Revive:** A "Watch Ad to Revive" button appears on the game over screen.
+-   **Interstitial Ads:** Shown every 3rd game over.
+-   **Difficulty Curve:** Game speed increases with the score.
+-   **Sound & Music:** BGM and SFX are implemented.
+
+---
+
+## 4. Monetization Strategy
+
+-   **Rewarded Ads (Primary):**
+    -   **Revive:** **(Implemented)** Continue from the point of failure.
+    -   **Bonus:** Double the coins collected after a run. *(Phase 1 Dependent)*
+-   **Interstitial Ads (Secondary):**
+    -   **Implemented:** Shown only after a game session ends, with rate-limiting.
+
+---
+
+## 5. Technical Architecture
+
+-   **State Management:** `provider` (`ChangeNotifier`, `ChangeNotifierProxyProvider`).
+-   **Game Loop:** A `Ticker` for consistent updates.
+-   **Rendering:** `CustomPaint` for all game elements.
+-   **Ad Integration:** `google_mobile_ads` SDK.
+-   **Sound:** `audioplayers` for BGM and SFX.
+-   **Backend:** Firebase for Analytics and Remote Config. *(Phase 4)*
+
