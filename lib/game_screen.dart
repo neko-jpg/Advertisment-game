@@ -18,6 +18,7 @@ class GameScreen extends StatefulWidget {
 
 class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   late final GameProvider _gameProvider;
+  bool _isDrawingGestureActive = false;
 
   @override
   void initState() {
@@ -46,26 +47,53 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                   game.setScreenSize(size);
                 }
 
+                final halfWidth = size.width * 0.5;
                 return GestureDetector(
                   behavior: HitTestBehavior.translucent,
-                  onTapUp: (_) {
+                  onTapDown: (details) {
                     if (game.gameState == GameState.ready) {
                       game.startGame();
-                    } else if (game.gameState == GameState.running) {
+                      return;
+                    }
+                    if (game.gameState == GameState.running &&
+                        details.localPosition.dx < halfWidth) {
                       game.jump();
                     }
                   },
                   onPanStart: (details) {
-                    if (game.gameState == GameState.running) {
-                      final started = lineProvider.startNewLine(details.localPosition);
-                      if (started) {
-                        HapticFeedback.lightImpact();
-                      }
+                    if (game.gameState != GameState.running) {
+                      return;
+                    }
+                    if (details.localPosition.dx < halfWidth) {
+                      _isDrawingGestureActive = false;
+                      return;
+                    }
+                    final started = lineProvider.startNewLine(details.localPosition);
+                    _isDrawingGestureActive = started;
+                    if (started) {
+                      HapticFeedback.lightImpact();
                     }
                   },
                   onPanUpdate: (details) {
-                    if (game.gameState == GameState.running) {
+                    if (game.gameState != GameState.running) {
+                      return;
+                    }
+                    if (_isDrawingGestureActive && lineProvider.isDrawing) {
                       lineProvider.addPointToLine(details.localPosition);
+                    } else {
+                      _isDrawingGestureActive = false;
+                    }
+                  },
+                  onPanEnd: (_) {
+                    if (_isDrawingGestureActive || lineProvider.isDrawing) {
+                      _isDrawingGestureActive = false;
+                      lineProvider.endCurrentLine();
+                    }
+                  },
+                  onPanCancel: (_) {
+                    if (_isDrawingGestureActive || lineProvider.isDrawing) {
+                      _isDrawingGestureActive = false;
+                      lineProvider.endCurrentLine();
                     }
                   },
                   child: Stack(
@@ -129,7 +157,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
             ),
             const SizedBox(height: 24),
             Text(
-              'Swipe to sketch platforms, tap to leap, and race for the highest score.',
+              'Tap the left side to leap, drag on the right to sketch platforms, and race for the highest score.',
               textAlign: TextAlign.center,
               style: textTheme.bodyLarge?.copyWith(
                 color: Colors.white70,
@@ -210,21 +238,29 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  lineProvider.isOnCooldown ? 'Line cooldown' : 'Draw ready',
+                  lineProvider.canStartNewLine ? 'Ink ready' : 'Ink recharging',
                   style: textTheme.bodyLarge?.copyWith(color: Colors.white),
                 ),
                 const SizedBox(height: 8),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(10),
                   child: LinearProgressIndicator(
-                    value: lineProvider.cooldownProgress,
+                    value: lineProvider.inkProgress,
                     minHeight: 8,
                     backgroundColor: Colors.white.withOpacity(0.2),
                     valueColor: AlwaysStoppedAnimation<Color>(
-                      lineProvider.isOnCooldown
-                          ? const Color(0xFFF97316)
-                          : const Color(0xFF22C55E),
+                      lineProvider.canStartNewLine
+                          ? const Color(0xFF22C55E)
+                          : const Color(0xFFF97316),
                     ),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${(lineProvider.inkProgress * 100).clamp(0, 100).round()}% charge',
+                  style: textTheme.bodySmall?.copyWith(
+                    color: Colors.white70,
+                    letterSpacing: 1.1,
                   ),
                 ),
               ],
