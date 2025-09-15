@@ -42,8 +42,12 @@ class GameProvider with ChangeNotifier {
   double get playerY => _playerY;
   int get score => _score;
   int get coinsCollected => coinProvider.coinsCollected;
+  Size get screenSize => _screenSize;
 
   void setScreenSize(Size size) {
+    if (_screenSize == size) {
+      return;
+    }
     _screenSize = size;
   }
 
@@ -89,10 +93,16 @@ class GameProvider with ChangeNotifier {
     // Check for collision with drawn lines
     for (final line in lineProvider.lines) {
       for (int i = 0; i < line.points.length - 1; i++) {
-        Offset p1 = line.points[i];
-        Offset p2 = line.points[i + 1];
-        if (_playerX > p1.dx && _playerX < p2.dx || _playerX > p2.dx && _playerX < p1.dx) {
-          double lineY = p1.dy + (p2.dy - p1.dy) * (_playerX - p1.dx) / (p2.dx - p1.dx);
+        final Offset p1 = line.points[i];
+        final Offset p2 = line.points[i + 1];
+        final double deltaX = p2.dx - p1.dx;
+        if (deltaX.abs() < 0.01) {
+          continue;
+        }
+        if ((_playerX >= p1.dx && _playerX <= p2.dx) ||
+            (_playerX >= p2.dx && _playerX <= p1.dx)) {
+          final double progress = (_playerX - p1.dx) / deltaX;
+          final double lineY = p1.dy + (p2.dy - p1.dy) * progress;
           if (_playerYSpeed >= 0 && (_playerY > lineY - 25 && _playerY < lineY + 5)) {
             _playerY = lineY - 20;
             _playerYSpeed = 0;
@@ -120,8 +130,6 @@ class GameProvider with ChangeNotifier {
     if (coinProvider.coinsCollected > initialCoins) {
       soundProvider.playCoinSfx();
     }
-
-    obstacleProvider.updateObstacles();
 
     // --- Obstacle collision ---
     for (var obstacle in obstacleProvider.obstacles) {
@@ -170,10 +178,16 @@ class GameProvider with ChangeNotifier {
   }
 
   void resetGame() {
-      _gameState = GameState.ready;
-      _score = 0;
-      soundProvider.stopBgm(); // Ensure BGM is stopped
-      notifyListeners();
+    _gameState = GameState.ready;
+    _score = 0;
+    _playerY = 380.0;
+    _playerYSpeed = 0.0;
+    _ticker?.stop();
+    lineProvider.clearAllLines();
+    obstacleProvider.reset();
+    coinProvider.reset();
+    soundProvider.stopBgm();
+    notifyListeners();
   }
   
   // Called by ChangeNotifierProxyProvider when dependencies change.

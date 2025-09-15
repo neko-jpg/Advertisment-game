@@ -1,5 +1,6 @@
 
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:provider/provider.dart';
 import 'game_provider.dart';
@@ -22,16 +23,38 @@ class QuickDrawDashApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final baseTextTheme = GoogleFonts.rubikTextTheme(
+      ThemeData(brightness: Brightness.dark).textTheme,
+    );
+    final textTheme = baseTextTheme.copyWith(
+      titleLarge: GoogleFonts.orbitron(
+        textStyle: baseTextTheme.titleLarge ?? const TextStyle(),
+      ).copyWith(
+        fontWeight: FontWeight.w700,
+        letterSpacing: 1.4,
+      ),
+      titleMedium: GoogleFonts.orbitron(
+        textStyle: baseTextTheme.titleMedium ?? const TextStyle(),
+      ).copyWith(
+        fontWeight: FontWeight.w600,
+        letterSpacing: 1.2,
+      ),
+      bodyLarge: baseTextTheme.bodyLarge?.copyWith(
+        fontSize: 16,
+        fontWeight: FontWeight.w500,
+      ),
+    );
+
     return MaterialApp(
       title: 'Quick Draw Dash',
       theme: ThemeData(
-        primarySwatch: Colors.blue,
-        visualDensity: VisualDensity.adaptivePlatformDensity,
-        scaffoldBackgroundColor: const Color(0xFFF0F8FF),
-        textTheme: const TextTheme(
-          bodyLarge: TextStyle(fontFamily: 'PressStart2P', fontSize: 18),
-          titleLarge: TextStyle(fontFamily: 'PressStart2P', fontSize: 24, fontWeight: FontWeight.bold),
+        useMaterial3: true,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF38BDF8),
+          brightness: Brightness.dark,
         ),
+        scaffoldBackgroundColor: const Color(0xFF020617),
+        textTheme: textTheme,
       ),
       home: const GameScreenWrapper(), // Use a wrapper to provide the providers
       debugShowCheckedModeBanner: false,
