@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'game_provider.dart';
 import 'ad_provider.dart';
-import 'game_painter.dart';
+import 'drawing_painter.dart';
 import 'line_provider.dart';
 
 class GameScreen extends StatefulWidget {
@@ -57,11 +57,8 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
               children: [
                 // The main game canvas
                 CustomPaint(
-                  painter: GamePainter(
-                    gameProvider: game,
-                    lineProvider: context.watch<LineProvider>(),
-                    obstacleProvider: context.watch(),
-                    coinProvider: context.watch(),
+                  painter: DrawingPainter(
+                    points: context.watch<LineProvider>().lines.expand((line) => line.points).toList(),
                   ),
                   child: Container(),
                 ),
@@ -96,7 +93,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
           const Text('QUICK DRAW DASH', style: TextStyle(fontSize: 32, fontFamily: 'PressStart2P')),
           const SizedBox(height: 40),
           ElevatedButton(
-            onPressed: () => _gameProvider.startGame(this),
+            onPressed: () => _gameProvider.startGame(),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.green,
               padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
@@ -135,7 +132,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.7),
+          color: Colors.black.withAlpha(178),
           borderRadius: BorderRadius.circular(15),
         ),
         child: Column(
@@ -153,7 +150,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                   onPressed: () {
                     adProvider.showInterstitialAdIfNeeded();
                     game.resetGame();
-                    game.startGame(this);
+                    game.startGame();
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.blue,

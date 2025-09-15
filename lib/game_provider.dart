@@ -1,6 +1,6 @@
 
-import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'ad_provider.dart';
 import 'line_provider.dart';
 import 'obstacle_provider.dart';
@@ -11,7 +11,7 @@ enum GameState { ready, running, dead, result }
 
 class GameProvider with ChangeNotifier {
   GameState _gameState = GameState.ready;
-  double _playerX = 100.0;
+  final double _playerX = 100.0;
   double _playerY = 380.0;
   double _playerYSpeed = 0.0;
   int _score = 0;
@@ -31,7 +31,10 @@ class GameProvider with ChangeNotifier {
     required this.obstacleProvider,
     required this.coinProvider,
     required this.soundProvider,
-  });
+    required TickerProvider vsync,
+  }) {
+    _ticker = vsync.createTicker(_gameLoop);
+  }
 
   // Getters
   GameState get gameState => _gameState;
@@ -44,7 +47,7 @@ class GameProvider with ChangeNotifier {
     _screenSize = size;
   }
 
-  void startGame(TickerProvider vsync) {
+  void startGame() {
     if (_gameState == GameState.running) return;
 
     _gameState = GameState.running;
@@ -61,8 +64,6 @@ class GameProvider with ChangeNotifier {
 
     adProvider.loadInterstitialAd(); // Load interstitial ad
 
-    _ticker?.dispose();
-    _ticker = vsync.createTicker(_gameLoop);
     _ticker!.start();
 
     notifyListeners();

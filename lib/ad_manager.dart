@@ -5,20 +5,20 @@ import 'dart:io';
 class AdManager {
   static String get rewardedAdUnitId {
     if (Platform.isAndroid) {
-      return RewardedAd.testAdUnitId;
+      return "ca-app-pub-3940256099942544/5224354917";
     }
     if (Platform.isIOS) {
-      return RewardedAd.testAdUnitId;
+      return "ca-app-pub-3940256099942544/1712485313";
     }
     return ""; // Or handle other platforms
   }
 
   static String get interstitialAdUnitId {
     if (Platform.isAndroid) {
-      return InterstitialAd.testAdUnitId;
+      return "ca-app-pub-3940256099942544/1033173712";
     }
     if (Platform.isIOS) {
-      return InterstitialAd.testAdUnitId;
+      return "ca-app-pub-3940256099942544/4411468910";
     }
     return ""; // Or handle other platforms
   }

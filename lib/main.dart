@@ -39,17 +39,23 @@ class QuickDrawDashApp extends StatelessWidget {
   }
 }
 
-class GameScreenWrapper extends StatelessWidget {
+class GameScreenWrapper extends StatefulWidget {
   const GameScreenWrapper({super.key});
 
   @override
+  State<GameScreenWrapper> createState() => _GameScreenWrapperState();
+}
+
+class _GameScreenWrapperState extends State<GameScreenWrapper> with TickerProviderStateMixin {
+  @override
   Widget build(BuildContext context) {
+    final gameWidth = MediaQuery.of(context).size.width;
     return MultiProvider(
       providers: [
         Provider(create: (_) => SoundProvider()), // Add SoundProvider
         ChangeNotifierProvider(create: (_) => AdProvider()),
         ChangeNotifierProvider(create: (_) => LineProvider()),
-        ChangeNotifierProvider(create: (_) => ObstacleProvider()),
+        ChangeNotifierProvider(create: (_) => ObstacleProvider(gameWidth: gameWidth)),
         ChangeNotifierProvider(create: (_) => CoinProvider()),
         ChangeNotifierProxyProvider4<AdProvider, LineProvider, ObstacleProvider, CoinProvider, GameProvider>(
           create: (context) => GameProvider(
@@ -57,7 +63,8 @@ class GameScreenWrapper extends StatelessWidget {
             lineProvider: context.read<LineProvider>(),
             obstacleProvider: context.read<ObstacleProvider>(),
             coinProvider: context.read<CoinProvider>(),
-            soundProvider: context.read<SoundProvider>(), // Pass SoundProvider
+            soundProvider: context.read<SoundProvider>(),
+            vsync: this,
           ),
           update: (_, ad, line, obstacle, coin, game) =>
               game!..updateDependencies(ad, line, obstacle, coin),
