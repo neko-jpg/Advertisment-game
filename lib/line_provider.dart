@@ -11,75 +11,138 @@ class DrawnLine {
 class LineProvider with ChangeNotifier {
   LineProvider();
 
-  static const Duration lineLifetime = Duration(milliseconds: 1500);
-  static const Duration drawCooldown = Duration(milliseconds: 1200);
+  static const Duration lineLifetime = Duration(milliseconds: 2100);
+  static const double _maxInk = 100.0;
+  static const double _minInkToStart = 8.0;
+  static const double _inkRegenPerSecond = 28.0;
+  static const double _inkCostPerPixel = 0.45;
+  static const double _pointDistanceThreshold = 4.0;
 
   final List<DrawnLine> _lines = [];
-  DateTime? _lastLineCreatedAt;
+  double _inkAmount = _maxInk;
+  bool _isDrawing = false;
+  DateTime? _lastInkUpdate;
 
   List<DrawnLine> get lines => _lines;
 
-  /// Indicates whether the player can start drawing a new line.
-  bool get canStartNewLine {
-    if (_lastLineCreatedAt == null) {
-      return true;
-    }
-    final elapsed = DateTime.now().difference(_lastLineCreatedAt!);
-    return elapsed >= drawCooldown;
-  }
+  double get inkAmount => _inkAmount;
 
-  /// Returns the cooldown completion percentage in the range [0, 1].
-  double get cooldownProgress {
-    if (_lastLineCreatedAt == null) {
-      return 1.0;
-    }
-    final elapsed = DateTime.now().difference(_lastLineCreatedAt!);
-    final ratio = elapsed.inMilliseconds / drawCooldown.inMilliseconds;
-    return ratio.clamp(0.0, 1.0);
-  }
+  double get inkProgress => (_inkAmount / _maxInk).clamp(0.0, 1.0);
 
-  bool get isOnCooldown => !canStartNewLine;
+  bool get canStartNewLine => _inkAmount >= _minInkToStart;
 
-  /// Starts a new line if the cooldown has completed.
-  ///
-  /// Returns `true` if the line creation succeeds.
+  bool get isDrawing => _isDrawing;
+
   bool startNewLine(Offset point) {
+    _refreshInk();
     if (!canStartNewLine) {
       return false;
     }
 
     final now = DateTime.now();
-    _lastLineCreatedAt = now;
+    _lastInkUpdate = now;
+    _isDrawing = true;
     _lines.add(DrawnLine(points: [point], creationTime: now));
     notifyListeners();
     return true;
   }
 
   void addPointToLine(Offset point) {
-    if (_lines.isEmpty) {
+    if (_lines.isEmpty || !_isDrawing) {
       return;
     }
-    _lines.last.points.add(point);
+
+    _refreshInk();
+    final currentLine = _lines.last;
+    final previousPoint = currentLine.points.last;
+    final distance = (point - previousPoint).distance;
+    if (distance < _pointDistanceThreshold) {
+      return;
+    }
+
+    if (_inkAmount <= 0) {
+      _isDrawing = false;
+      notifyListeners();
+      return;
+    }
+
+    final inkCost = distance * _inkCostPerPixel;
+    if (inkCost > _inkAmount) {
+      final ratio = _inkAmount / inkCost;
+      final cappedPoint = Offset.lerp(previousPoint, point, ratio);
+      if (cappedPoint != null) {
+        currentLine.points.add(cappedPoint);
+      }
+      _inkAmount = 0;
+      _isDrawing = false;
+      notifyListeners();
+      return;
+    }
+
+    _inkAmount = (_inkAmount - inkCost).clamp(0.0, _maxInk);
+    currentLine.points.add(point);
+    notifyListeners();
+  }
+
+  void endCurrentLine() {
+    if (!_isDrawing) {
+      return;
+    }
+    _isDrawing = false;
     notifyListeners();
   }
 
   void updateLineLifetimes() {
-    if (_lines.isEmpty) {
-      return;
-    }
     final now = DateTime.now();
+    final previousInk = _inkAmount;
     final previousLength = _lines.length;
+
+    if (_lastInkUpdate == null) {
+      _lastInkUpdate = now;
+    }
+
+    final elapsed = now.difference(_lastInkUpdate!);
+    if (elapsed.inMilliseconds > 0) {
+      _lastInkUpdate = now;
+      if (_inkAmount < _maxInk) {
+        final regenAmount =
+            _inkRegenPerSecond * elapsed.inMilliseconds / 1000.0;
+        _inkAmount = (_inkAmount + regenAmount).clamp(0.0, _maxInk);
+      }
+    }
+
     _lines.removeWhere(
       (line) => now.difference(line.creationTime) > lineLifetime,
     );
-    if (_lines.length != previousLength) {
+
+    if (_lines.length != previousLength || _inkAmount != previousInk) {
       notifyListeners();
     }
   }
 
   void clearAllLines() {
     _lines.clear();
-    _lastLineCreatedAt = null;
+    _inkAmount = _maxInk;
+    _isDrawing = false;
+    _lastInkUpdate = null;
     notifyListeners();
+  }
+
+  void _refreshInk() {
+    final now = DateTime.now();
+    if (_lastInkUpdate == null) {
+      _lastInkUpdate = now;
+      return;
+    }
+    final elapsed = now.difference(_lastInkUpdate!);
+    if (elapsed.inMilliseconds <= 0) {
+      return;
+    }
+    _lastInkUpdate = now;
+    if (_inkAmount >= _maxInk) {
+      return;
+    }
+    final regenAmount = _inkRegenPerSecond * elapsed.inMilliseconds / 1000.0;
+    _inkAmount = (_inkAmount + regenAmount).clamp(0.0, _maxInk);
   }
 }

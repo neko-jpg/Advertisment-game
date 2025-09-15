@@ -1,4 +1,6 @@
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'ad_provider.dart';
@@ -17,6 +19,11 @@ class GameProvider with ChangeNotifier {
   int _score = 0;
   Ticker? _ticker;
   Size _screenSize = Size.zero;
+  static const double _coyoteDurationMs = 120.0;
+  static const double _jumpBufferDurationMs = 100.0;
+  double _coyoteTimerMs = 0.0;
+  double _jumpBufferTimerMs = 0.0;
+  DateTime? _lastFrameTimestamp;
 
   // Providers
   AdProvider adProvider;
@@ -58,6 +65,9 @@ class GameProvider with ChangeNotifier {
     _score = 0;
     _playerY = 380.0;
     _playerYSpeed = 0.0;
+    _jumpBufferTimerMs = 0.0;
+    _coyoteTimerMs = _coyoteDurationMs;
+    _lastFrameTimestamp = null;
 
     // Reset all providers
     lineProvider.clearAllLines();
@@ -78,6 +88,20 @@ class GameProvider with ChangeNotifier {
       _ticker?.stop();
       return;
     }
+
+    final now = DateTime.now();
+    final double deltaMs;
+    if (_lastFrameTimestamp == null) {
+      deltaMs = 16.0;
+    } else {
+      final elapsedMs =
+          now.difference(_lastFrameTimestamp!).inMilliseconds.toDouble();
+      deltaMs = math.min(200.0, math.max(0.0, elapsedMs));
+    }
+    _lastFrameTimestamp = now;
+
+    _jumpBufferTimerMs = math.max(0.0, _jumpBufferTimerMs - deltaMs);
+    _coyoteTimerMs = math.max(0.0, _coyoteTimerMs - deltaMs);
 
     final initialCoins = coinProvider.coinsCollected;
 
@@ -118,9 +142,27 @@ class GameProvider with ChangeNotifier {
     if (!onGround && _playerY >= 380) {
       _playerY = 380;
       _playerYSpeed = 0;
+      onGround = true;
     }
 
-    Rect playerRect = Rect.fromLTWH(playerX - 15, playerY - 15, 30, 30);
+    if (onGround) {
+      _coyoteTimerMs = _coyoteDurationMs;
+    }
+
+    bool didTriggerBufferedJump = false;
+    if (_jumpBufferTimerMs > 0 && (onGround || _coyoteTimerMs > 0)) {
+      _playerYSpeed = -12.0;
+      _jumpBufferTimerMs = 0.0;
+      _coyoteTimerMs = 0.0;
+      onGround = false;
+      didTriggerBufferedJump = true;
+    }
+
+    if (didTriggerBufferedJump) {
+      soundProvider.playJumpSfx();
+    }
+
+    final Rect playerRect = Rect.fromLTWH(playerX - 15, playerY - 15, 30, 30);
 
     // --- Coin and Obstacle updates ---
     coinProvider.maybeSpawnCoin(_screenSize.width, _screenSize.height);
@@ -162,6 +204,9 @@ class GameProvider with ChangeNotifier {
     _playerY = 380.0;
     _playerYSpeed = 0.0;
     _gameState = GameState.running;
+    _jumpBufferTimerMs = 0.0;
+    _coyoteTimerMs = _coyoteDurationMs;
+    _lastFrameTimestamp = null;
     obstacleProvider.startSpawning();
     soundProvider.startBgm(); // Restart BGM
     _ticker?.start();
@@ -170,11 +215,10 @@ class GameProvider with ChangeNotifier {
   }
 
   void jump() {
-    if (_gameState == GameState.running && _playerY >= 370) {
-      _playerYSpeed = -12.0;
-      soundProvider.playJumpSfx(); // Play jump sound
-      notifyListeners();
+    if (_gameState != GameState.running) {
+      return;
     }
+    _jumpBufferTimerMs = _jumpBufferDurationMs;
   }
 
   void resetGame() {
@@ -182,6 +226,9 @@ class GameProvider with ChangeNotifier {
     _score = 0;
     _playerY = 380.0;
     _playerYSpeed = 0.0;
+    _jumpBufferTimerMs = 0.0;
+    _coyoteTimerMs = 0.0;
+    _lastFrameTimestamp = null;
     _ticker?.stop();
     lineProvider.clearAllLines();
     obstacleProvider.reset();
