@@ -1,4 +1,3 @@
-
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -36,9 +35,16 @@ void main() async {
 }
 
 class QuickDrawDashApp extends StatelessWidget {
-  const QuickDrawDashApp({super.key, required this.analytics});
+  const QuickDrawDashApp({
+    super.key,
+    required this.analytics,
+    this.remoteConfigOverride,
+    this.soundProviderOverride,
+  });
 
   final AnalyticsProvider analytics;
+  final RemoteConfigProvider? remoteConfigOverride;
+  final SoundProvider? soundProviderOverride;
 
   @override
   Widget build(BuildContext context) {
@@ -48,16 +54,10 @@ class QuickDrawDashApp extends StatelessWidget {
     final textTheme = baseTextTheme.copyWith(
       titleLarge: GoogleFonts.orbitron(
         textStyle: baseTextTheme.titleLarge ?? const TextStyle(),
-      ).copyWith(
-        fontWeight: FontWeight.w700,
-        letterSpacing: 1.4,
-      ),
+      ).copyWith(fontWeight: FontWeight.w700, letterSpacing: 1.4),
       titleMedium: GoogleFonts.orbitron(
         textStyle: baseTextTheme.titleMedium ?? const TextStyle(),
-      ).copyWith(
-        fontWeight: FontWeight.w600,
-        letterSpacing: 1.2,
-      ),
+      ).copyWith(fontWeight: FontWeight.w600, letterSpacing: 1.2),
       bodyLarge: baseTextTheme.bodyLarge?.copyWith(
         fontSize: 16,
         fontWeight: FontWeight.w500,
@@ -77,7 +77,10 @@ class QuickDrawDashApp extends StatelessWidget {
           scaffoldBackgroundColor: const Color(0xFF020617),
           textTheme: textTheme,
         ),
-        home: const GameScreenWrapper(), // Use a wrapper to provide the providers
+        home: GameScreenWrapper(
+          remoteConfigOverride: remoteConfigOverride,
+          soundProviderOverride: soundProviderOverride,
+        ),
         debugShowCheckedModeBanner: false,
       ),
     );
@@ -85,44 +88,114 @@ class QuickDrawDashApp extends StatelessWidget {
 }
 
 class GameScreenWrapper extends StatefulWidget {
-  const GameScreenWrapper({super.key});
+  const GameScreenWrapper({
+    super.key,
+    this.remoteConfigOverride,
+    this.soundProviderOverride,
+  });
+
+  final RemoteConfigProvider? remoteConfigOverride;
+  final SoundProvider? soundProviderOverride;
 
   @override
   State<GameScreenWrapper> createState() => _GameScreenWrapperState();
 }
 
-class _GameScreenWrapperState extends State<GameScreenWrapper> with TickerProviderStateMixin {
+class _GameScreenWrapperState extends State<GameScreenWrapper>
+    with TickerProviderStateMixin {
+  late final RemoteConfigProvider _remoteConfig;
+  late final bool _ownsRemoteConfig;
+  late final SoundProvider _soundProvider;
+  late final bool _ownsSoundProvider;
+
+  @override
+  void initState() {
+    super.initState();
+    final configOverride = widget.remoteConfigOverride;
+    if (configOverride != null) {
+      _remoteConfig = configOverride;
+      _ownsRemoteConfig = false;
+    } else {
+      _remoteConfig = RemoteConfigProvider();
+      _ownsRemoteConfig = true;
+    }
+    final soundOverride = widget.soundProviderOverride;
+    if (soundOverride != null) {
+      _soundProvider = soundOverride;
+      _ownsSoundProvider = false;
+    } else {
+      _soundProvider = SoundProvider();
+      _ownsSoundProvider = true;
+    }
+  }
+
+  @override
+  void dispose() {
+    if (_ownsRemoteConfig) {
+      _remoteConfig.dispose();
+    }
+    if (_ownsSoundProvider) {
+      _soundProvider.dispose();
+    }
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final gameWidth = MediaQuery.of(context).size.width;
     return MultiProvider(
       providers: [
-        Provider(create: (_) => SoundProvider()), // Add SoundProvider
-        ChangeNotifierProvider(create: (_) => MetaProvider()),
-        ChangeNotifierProvider(create: (_) => RemoteConfigProvider()),
+        Provider<SoundProvider>.value(value: _soundProvider),
+        ChangeNotifierProvider<RemoteConfigProvider>.value(
+          value: _remoteConfig,
+        ),
+        ChangeNotifierProxyProvider<RemoteConfigProvider, MetaProvider>(
+          create: (_) => MetaProvider(),
+          update:
+              (_, remote, meta) => meta!..applyUpgradeConfig(remote.metaConfig),
+        ),
         ChangeNotifierProxyProvider<RemoteConfigProvider, AdProvider>(
-          create: (context) =>
-              AdProvider(analytics: context.read<AnalyticsProvider>()),
+          create:
+              (context) =>
+                  AdProvider(analytics: context.read<AnalyticsProvider>()),
           update: (_, remote, ad) => ad!..applyRemoteConfig(remote.adConfig),
         ),
         ChangeNotifierProvider(create: (_) => LineProvider()),
-        ChangeNotifierProvider(create: (_) => ObstacleProvider(gameWidth: gameWidth)),
+        ChangeNotifierProvider(
+          create: (_) => ObstacleProvider(gameWidth: gameWidth),
+        ),
         ChangeNotifierProvider(create: (_) => CoinProvider()),
-        ChangeNotifierProxyProvider6<AdProvider, LineProvider, ObstacleProvider,
-            CoinProvider, MetaProvider, RemoteConfigProvider, GameProvider>(
-          create: (context) => GameProvider(
-            analytics: context.read<AnalyticsProvider>(),
-            adProvider: context.read<AdProvider>(),
-            lineProvider: context.read<LineProvider>(),
-            obstacleProvider: context.read<ObstacleProvider>(),
-            coinProvider: context.read<CoinProvider>(),
-            metaProvider: context.read<MetaProvider>(),
-            remoteConfigProvider: context.read<RemoteConfigProvider>(),
-            soundProvider: context.read<SoundProvider>(),
-            vsync: this,
-          ),
-          update: (_, ad, line, obstacle, coin, meta, remote, game) => game!
-            ..updateDependencies(ad, line, obstacle, coin, meta, remote),
+        ChangeNotifierProxyProvider6<
+          AdProvider,
+          LineProvider,
+          ObstacleProvider,
+          CoinProvider,
+          MetaProvider,
+          RemoteConfigProvider,
+          GameProvider
+        >(
+          create:
+              (context) => GameProvider(
+                analytics: context.read<AnalyticsProvider>(),
+                adProvider: context.read<AdProvider>(),
+                lineProvider: context.read<LineProvider>(),
+                obstacleProvider: context.read<ObstacleProvider>(),
+                coinProvider: context.read<CoinProvider>(),
+                metaProvider: context.read<MetaProvider>(),
+                remoteConfigProvider: context.read<RemoteConfigProvider>(),
+                soundProvider: context.read<SoundProvider>(),
+                vsync: this,
+              ),
+          update:
+              (_, ad, line, obstacle, coin, meta, remote, game) =>
+                  game!..updateDependencies(
+                    ad,
+                    line,
+                    obstacle,
+                    coin,
+                    meta,
+                    remote,
+                  ),
         ),
       ],
       child: const GameScreen(),

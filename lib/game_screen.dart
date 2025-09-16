@@ -1,8 +1,9 @@
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'constants/animation_constants.dart';
+import 'constants/ui_constants.dart';
 import 'game_provider.dart';
 import 'ad_provider.dart';
 import 'drawing_painter.dart';
@@ -22,10 +23,7 @@ class GameScreen extends StatefulWidget {
 }
 
 class _InkUiState {
-  const _InkUiState({
-    required this.canStartNewLine,
-    required this.inkProgress,
-  });
+  const _InkUiState({required this.canStartNewLine, required this.inkProgress});
 
   final bool canStartNewLine;
   final double inkProgress;
@@ -38,6 +36,13 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   late final AnimationController _ghostHandController;
   late final Animation<double> _ghostHandAnimation;
 
+  double _startButtonScale = 1.0;
+  double _missionButtonScale = 1.0;
+  Duration _startButtonAnimationDuration =
+      AnimationConstants.buttonPressDuration;
+  Duration _missionButtonAnimationDuration =
+      AnimationConstants.buttonPressDuration;
+
   @override
   void initState() {
     super.initState();
@@ -47,8 +52,10 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
       vsync: this,
       duration: const Duration(milliseconds: 1600),
     )..repeat(reverse: true);
-    _ghostHandAnimation =
-        CurvedAnimation(parent: _ghostHandController, curve: Curves.easeInOut);
+    _ghostHandAnimation = CurvedAnimation(
+      parent: _ghostHandController,
+      curve: Curves.easeInOut,
+    );
 
     // Use a post-frame callback to ensure the layout is complete
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -63,6 +70,38 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   void dispose() {
     _ghostHandController.dispose();
     super.dispose();
+  }
+
+  void _setStartButtonPressed(bool pressed) {
+    final targetScale = pressed ? AnimationConstants.buttonPressedScale : 1.0;
+    final targetDuration =
+        pressed
+            ? AnimationConstants.buttonPressDuration
+            : AnimationConstants.buttonReleaseDuration;
+    if (_startButtonScale == targetScale &&
+        _startButtonAnimationDuration == targetDuration) {
+      return;
+    }
+    setState(() {
+      _startButtonScale = targetScale;
+      _startButtonAnimationDuration = targetDuration;
+    });
+  }
+
+  void _setMissionButtonPressed(bool pressed) {
+    final targetScale = pressed ? AnimationConstants.buttonPressedScale : 1.0;
+    final targetDuration =
+        pressed
+            ? AnimationConstants.buttonPressDuration
+            : AnimationConstants.buttonReleaseDuration;
+    if (_missionButtonScale == targetScale &&
+        _missionButtonAnimationDuration == targetDuration) {
+      return;
+    }
+    setState(() {
+      _missionButtonScale = targetScale;
+      _missionButtonAnimationDuration = targetDuration;
+    });
   }
 
   Future<void> _showSkinShop(BuildContext context) async {
@@ -82,9 +121,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
             child: Consumer<MetaProvider>(
               builder: (context, meta, _) {
                 if (!meta.isReady) {
-                  return const Center(
-                    child: CircularProgressIndicator(),
-                  );
+                  return const Center(child: CircularProgressIndicator());
                 }
                 final textTheme = Theme.of(context).textTheme;
                 return Column(
@@ -130,7 +167,9 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _showProgressionSheet(
-      BuildContext context, MetaProvider meta) async {
+    BuildContext context,
+    MetaProvider meta,
+  ) async {
     await meta.refreshDailyMissionsIfNeeded();
     await showModalBottomSheet(
       context: context,
@@ -223,16 +262,17 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
             ),
           const SizedBox(height: 12),
           ElevatedButton.icon(
-            onPressed: canClaim
-                ? () async {
-                    final reward = await meta.claimLoginBonus();
-                    if (!mounted) return;
-                    _showSnackMessage(
-                      context,
-                      'Collected $reward coins from daily login!',
-                    );
-                  }
-                : null,
+            onPressed:
+                canClaim
+                    ? () async {
+                      final reward = await meta.claimLoginBonus();
+                      if (!mounted) return;
+                      _showSnackMessage(
+                        context,
+                        'Collected $reward coins from daily login!',
+                      );
+                    }
+                    : null,
             icon: const Icon(Icons.card_giftcard_rounded),
             label: const Text('Claim bonus'),
             style: ElevatedButton.styleFrom(
@@ -266,10 +306,12 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
           style: textTheme.titleMedium?.copyWith(color: Colors.white),
         ),
         const SizedBox(height: 12),
-        ...missions.map((mission) => Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: _buildMissionCard(context, mission, meta),
-            )),
+        ...missions.map(
+          (mission) => Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _buildMissionCard(context, mission, meta),
+          ),
+        ),
       ],
     );
   }
@@ -305,8 +347,9 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
               value: progress,
               minHeight: 6,
               backgroundColor: Colors.white.withOpacity(0.15),
-              valueColor:
-                  const AlwaysStoppedAnimation<Color>(Color(0xFFFACC15)),
+              valueColor: const AlwaysStoppedAnimation<Color>(
+                Color(0xFFFACC15),
+              ),
             ),
           ),
           const SizedBox(height: 6),
@@ -318,30 +361,36 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                 style: textTheme.bodySmall?.copyWith(color: Colors.white70),
               ),
               ElevatedButton(
-                onPressed: completed && !claimed
-                    ? () async {
-                        final reward =
-                            await meta.claimMissionReward(mission.id);
-                        if (!mounted) return;
-                        if (reward > 0) {
-                          _showSnackMessage(
-                            context,
-                            'Mission complete! +$reward coins',
+                onPressed:
+                    completed && !claimed
+                        ? () async {
+                          final reward = await meta.claimMissionReward(
+                            mission.id,
                           );
+                          if (!mounted) return;
+                          if (reward > 0) {
+                            _showSnackMessage(
+                              context,
+                              'Mission complete! +$reward coins',
+                            );
+                          }
                         }
-                      }
-                    : null,
+                        : null,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF22C55E),
                   foregroundColor: Colors.white,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 10,
+                  ),
                 ),
-                child: Text(claimed
-                    ? 'Claimed'
-                    : completed
-                        ? 'Claim'
-                        : 'In progress'),
+                child: Text(
+                  claimed
+                      ? 'Claimed'
+                      : completed
+                      ? 'Claim'
+                      : 'In progress',
+                ),
               ),
             ],
           ),
@@ -395,9 +444,8 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
     final textTheme = Theme.of(context).textTheme;
     final level = meta.upgradeLevel(definition.type);
     final maxed = level >= definition.maxLevel;
-    final nextDescription = maxed
-        ? 'Max level reached'
-        : definition.descriptionBuilder(level + 1);
+    final nextDescription =
+        maxed ? 'Max level reached' : definition.descriptionBuilder(level + 1);
     final cost = meta.upgradeCost(definition.type);
     return Container(
       padding: const EdgeInsets.all(16),
@@ -430,19 +478,21 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
           ),
           const SizedBox(width: 16),
           ElevatedButton(
-            onPressed: maxed || meta.totalCoins < cost
-                ? null
-                : () async {
-                    final purchased =
-                        await meta.purchaseUpgrade(definition.type);
-                    if (!mounted) return;
-                    if (purchased) {
-                      _showSnackMessage(
-                        context,
-                        '${definition.displayName} upgraded!',
+            onPressed:
+                maxed || meta.totalCoins < cost
+                    ? null
+                    : () async {
+                      final purchased = await meta.purchaseUpgrade(
+                        definition.type,
                       );
-                    }
-                  },
+                      if (!mounted) return;
+                      if (purchased) {
+                        _showSnackMessage(
+                          context,
+                          '${definition.displayName} upgraded!',
+                        );
+                      }
+                    },
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFFF97316),
               foregroundColor: Colors.white,
@@ -483,16 +533,19 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
             runSpacing: 12,
             children: [
               ElevatedButton.icon(
-                onPressed: adProvider.isRewardedAdReady
-                    ? () => _triggerGachaWithAd(context, meta)
-                    : null,
+                onPressed:
+                    adProvider.isRewardedAdReady
+                        ? () => _triggerGachaWithAd(context, meta)
+                        : null,
                 icon: const Icon(Icons.play_circle_fill_rounded),
                 label: const Text('Free roll (Ad)'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF38BDF8),
                   foregroundColor: Colors.white,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 14,
+                  ),
                 ),
               ),
               if (meta.canClaimFreeGacha)
@@ -503,22 +556,27 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF22C55E),
                     foregroundColor: Colors.white,
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 14,
+                    ),
                   ),
                 )
               else
                 OutlinedButton.icon(
-                  onPressed: meta.totalCoins >= 120
-                      ? () => _triggerCoinGacha(context, meta)
-                      : null,
+                  onPressed:
+                      meta.totalCoins >= 120
+                          ? () => _triggerCoinGacha(context, meta)
+                          : null,
                   icon: const Icon(Icons.monetization_on_rounded),
                   label: const Text('Spend 120 coins'),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Colors.white,
                     side: BorderSide(color: Colors.white.withOpacity(0.35)),
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 14,
+                    ),
                   ),
                 ),
             ],
@@ -529,7 +587,9 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _triggerGachaWithAd(
-      BuildContext context, MetaProvider meta) async {
+    BuildContext context,
+    MetaProvider meta,
+  ) async {
     final adProvider = context.read<AdProvider>();
     if (!adProvider.isRewardedAdReady) {
       _showSnackMessage(context, 'Ad not ready yet.');
@@ -557,7 +617,9 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _triggerCoinGacha(
-      BuildContext context, MetaProvider meta) async {
+    BuildContext context,
+    MetaProvider meta,
+  ) async {
     if (meta.totalCoins < 120) {
       _showSnackMessage(context, 'Not enough coins for a roll.');
       return;
@@ -571,7 +633,9 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _triggerFreeGacha(
-      BuildContext context, MetaProvider meta) async {
+    BuildContext context,
+    MetaProvider meta,
+  ) async {
     final result = await meta.pullGacha(viaAd: false);
     if (!mounted) return;
     _showSnackMessage(
@@ -582,10 +646,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
 
   void _showSnackMessage(BuildContext context, String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        behavior: SnackBarBehavior.floating,
-      ),
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
     );
   }
 
@@ -644,9 +705,10 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
             min: 0,
             max: 1,
             divisions: 10,
-            label: meta.hapticStrength <= 0.05
-                ? 'Off'
-                : meta.hapticStrength.toStringAsFixed(1),
+            label:
+                meta.hapticStrength <= 0.05
+                    ? 'Off'
+                    : meta.hapticStrength.toStringAsFixed(1),
           ),
         ],
       ),
@@ -691,108 +753,126 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                 final isLeftHanded = metaProvider.leftHandedMode;
                 final oneTapMode = metaProvider.oneTapMode;
                 bool isJumpZone(Offset offset) =>
-                    isLeftHanded ? offset.dx > halfWidth : offset.dx < halfWidth;
+                    isLeftHanded
+                        ? offset.dx > halfWidth
+                        : offset.dx < halfWidth;
                 return GestureDetector(
                   behavior: HitTestBehavior.translucent,
-                  onTapDown: oneTapMode
-                      ? null
-                      : (details) {
-                          if (game.gameState == GameState.ready) {
-                            game.startGame();
-                            return;
+                  onTapDown:
+                      oneTapMode
+                          ? null
+                          : (details) {
+                            if (game.gameState == GameState.ready) {
+                              game.startGame();
+                              return;
+                            }
+                            if (game.gameState == GameState.running &&
+                                isJumpZone(details.localPosition)) {
+                              game.jump();
+                            }
+                          },
+                  onTapUp:
+                      oneTapMode
+                          ? (_) {
+                            if (game.gameState == GameState.ready) {
+                              game.startGame();
+                            } else if (game.gameState == GameState.running) {
+                              game.jump();
+                            }
                           }
-                          if (game.gameState == GameState.running &&
-                              isJumpZone(details.localPosition)) {
-                            game.jump();
+                          : null,
+                  onPanStart:
+                      oneTapMode
+                          ? null
+                          : (details) {
+                            if (game.gameState != GameState.running) {
+                              return;
+                            }
+                            if (isJumpZone(details.localPosition)) {
+                              _isDrawingGestureActive = false;
+                              game.jump();
+                              return;
+                            }
+                            final started = lineProvider.startNewLine(
+                              details.localPosition,
+                            );
+                            _isDrawingGestureActive = started;
+                            if (started) {
+                              game.markLineUsed();
+                              HapticFeedback.lightImpact();
+                            }
+                          },
+                  onPanUpdate:
+                      oneTapMode
+                          ? null
+                          : (details) {
+                            if (game.gameState != GameState.running) {
+                              return;
+                            }
+                            if (_isDrawingGestureActive &&
+                                lineProvider.isDrawing) {
+                              lineProvider.addPointToLine(
+                                details.localPosition,
+                              );
+                            } else {
+                              _isDrawingGestureActive = false;
+                            }
+                          },
+                  onPanEnd:
+                      oneTapMode
+                          ? null
+                          : (_) {
+                            if (_isDrawingGestureActive ||
+                                lineProvider.isDrawing) {
+                              _isDrawingGestureActive = false;
+                              lineProvider.endCurrentLine();
+                            }
+                          },
+                  onPanCancel:
+                      oneTapMode
+                          ? null
+                          : () {
+                            if (_isDrawingGestureActive ||
+                                lineProvider.isDrawing) {
+                              _isDrawingGestureActive = false;
+                              lineProvider.endCurrentLine();
+                            }
+                          },
+                  onLongPressStart:
+                      oneTapMode
+                          ? (details) {
+                            if (game.gameState != GameState.running) {
+                              return;
+                            }
+                            final started = lineProvider.startNewLine(
+                              details.localPosition,
+                            );
+                            _isOneTapDrawing = started;
+                            if (started) {
+                              game.markLineUsed();
+                              HapticFeedback.lightImpact();
+                            }
                           }
-                        },
-                  onTapUp: oneTapMode
-                      ? (_) {
-                          if (game.gameState == GameState.ready) {
-                            game.startGame();
-                          } else if (game.gameState == GameState.running) {
-                            game.jump();
-                          }
-                        }
-                      : null,
-                  onPanStart: oneTapMode
-                      ? null
-                      : (details) {
-                          if (game.gameState != GameState.running) {
-                            return;
-                          }
-                          if (isJumpZone(details.localPosition)) {
-                            _isDrawingGestureActive = false;
-                            game.jump();
-                            return;
-                          }
-                          final started =
-                              lineProvider.startNewLine(details.localPosition);
-                          _isDrawingGestureActive = started;
-                          if (started) {
-                            game.markLineUsed();
-                            HapticFeedback.lightImpact();
-                          }
-                        },
-                  onPanUpdate: oneTapMode
-                      ? null
-                      : (details) {
-                          if (game.gameState != GameState.running) {
-                            return;
-                          }
-                          if (_isDrawingGestureActive && lineProvider.isDrawing) {
+                          : null,
+                  onLongPressMoveUpdate:
+                      oneTapMode
+                          ? (details) {
+                            if (!_isOneTapDrawing ||
+                                game.gameState != GameState.running) {
+                              return;
+                            }
                             lineProvider.addPointToLine(details.localPosition);
-                          } else {
-                            _isDrawingGestureActive = false;
                           }
-                        },
-                  onPanEnd: oneTapMode
-                      ? null
-                      : (_) {
-                          if (_isDrawingGestureActive || lineProvider.isDrawing) {
-                            _isDrawingGestureActive = false;
-                            lineProvider.endCurrentLine();
+                          : null,
+                  onLongPressEnd:
+                      oneTapMode
+                          ? (_) {
+                            if (_isOneTapDrawing || lineProvider.isDrawing) {
+                              _isOneTapDrawing = false;
+                              lineProvider.endCurrentLine();
+                            }
                           }
-                        },
-                  onPanCancel: oneTapMode
-                      ? null
-                      : (_) {
-                          if (_isDrawingGestureActive || lineProvider.isDrawing) {
-                            _isDrawingGestureActive = false;
-                            lineProvider.endCurrentLine();
-                          }
-                        },
-                  onLongPressStart: oneTapMode
-                      ? (details) {
-                          if (game.gameState != GameState.running) {
-                            return;
-                          }
-                          final started =
-                              lineProvider.startNewLine(details.localPosition);
-                          _isOneTapDrawing = started;
-                          if (started) {
-                            game.markLineUsed();
-                            HapticFeedback.lightImpact();
-                          }
-                        }
-                      : null,
-                  onLongPressMoveUpdate: oneTapMode
-                      ? (details) {
-                          if (!_isOneTapDrawing ||
-                              game.gameState != GameState.running) {
-                            return;
-                          }
-                          lineProvider.addPointToLine(details.localPosition);
-                        }
-                      : null,
-                  onLongPressEnd: oneTapMode
-                      ? (_) {
-                          if (_isOneTapDrawing || lineProvider.isDrawing) {
-                            _isOneTapDrawing = false;
-                            lineProvider.endCurrentLine();
-                          }
-                        }
-                      : null,
+                          : null,
                   child: Stack(
                     children: [
                       Positioned.fill(
@@ -802,13 +882,17 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                             builder: (context, _) {
                               return CustomPaint(
                                 painter: DrawingPainter(
-                                  playerPosition: Offset(game.playerX, game.playerY),
+                                  playerPosition: Offset(
+                                    game.playerX,
+                                    game.playerY,
+                                  ),
                                   lines: lineProvider.lines,
                                   obstacles: obstacleProvider.obstacles,
                                   coins: coinProvider.coins,
                                   skin: metaProvider.selectedSkin,
                                   isRestWindow: game.isRestWindow,
-                                  colorBlindFriendly: metaProvider.colorBlindMode,
+                                  colorBlindFriendly:
+                                      metaProvider.colorBlindMode,
                                   elapsedMs: game.elapsedRunMs,
                                   scrollSpeed: obstacleProvider.speed,
                                   frameId: game.worldFrame,
@@ -868,8 +952,10 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
             child: Align(
               alignment: Alignment.topCenter,
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 12,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.black.withOpacity(0.7),
                   borderRadius: BorderRadius.circular(20),
@@ -879,7 +965,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                       color: toast.color.withOpacity(0.2),
                       blurRadius: 18,
                       offset: const Offset(0, 8),
-                    )
+                    ),
                   ],
                 ),
                 child: Row(
@@ -932,32 +1018,89 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                 height: 1.5,
               ),
             ),
-            const SizedBox(height: 36),
-            ElevatedButton.icon(
-              onPressed: _gameProvider.startGame,
-              icon: const Icon(Icons.play_arrow_rounded, size: 26),
-              label: const Text('START RUN'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF22C55E),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 18),
-                textStyle: textTheme.titleMedium?.copyWith(letterSpacing: 1.2),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(18),
+            const SizedBox(height: UiSpacing.heroButtonGap),
+            Listener(
+              onPointerDown: (_) => _setStartButtonPressed(true),
+              onPointerUp: (_) => _setStartButtonPressed(false),
+              onPointerCancel: (_) => _setStartButtonPressed(false),
+              child: AnimatedScale(
+                scale: _startButtonScale,
+                duration: _startButtonAnimationDuration,
+                curve: Curves.easeOutBack,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    context.read<SoundProvider>().playJumpSfx();
+                    _gameProvider.startGame();
+                    Future.delayed(
+                      AnimationConstants.buttonScaleResetDelay,
+                      () {
+                        if (mounted) {
+                          _setStartButtonPressed(false);
+                        }
+                      },
+                    );
+                  },
+                  icon: const Icon(Icons.play_arrow_rounded, size: 26),
+                  label: const Text('START RUN'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: UiColors.primaryAction,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: UiDimensions.primaryButtonHorizontalPadding,
+                      vertical: UiDimensions.primaryButtonVerticalPadding,
+                    ),
+                    textStyle: textTheme.titleMedium?.copyWith(
+                      letterSpacing: 1.2,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(
+                        UiDimensions.primaryButtonCornerRadius,
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
-            const SizedBox(height: 18),
-            OutlinedButton.icon(
-              onPressed: () => _showProgressionSheet(context, meta),
-              icon: const Icon(Icons.flag_rounded),
-              label: const Text('MISSIONS & BOOSTS'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.white,
-                side: BorderSide(color: Colors.white.withOpacity(0.35), width: 1.2),
-                padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(18),
+            const SizedBox(height: UiSpacing.heroSecondaryGap),
+            Listener(
+              onPointerDown: (_) => _setMissionButtonPressed(true),
+              onPointerUp: (_) => _setMissionButtonPressed(false),
+              onPointerCancel: (_) => _setMissionButtonPressed(false),
+              child: AnimatedScale(
+                scale: _missionButtonScale,
+                duration: _missionButtonAnimationDuration,
+                curve: Curves.easeOutBack,
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    context.read<SoundProvider>().playCoinSfx();
+                    _showProgressionSheet(context, meta);
+                    Future.delayed(
+                      AnimationConstants.buttonScaleResetDelay,
+                      () {
+                        if (mounted) {
+                          _setMissionButtonPressed(false);
+                        }
+                      },
+                    );
+                  },
+                  icon: const Icon(Icons.flag_rounded),
+                  label: const Text('MISSIONS & BOOSTS'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    side: BorderSide(
+                      color: UiColors.secondaryActionBorder.withOpacity(0.35),
+                      width: UiDimensions.secondaryButtonBorderWidth,
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: UiDimensions.secondaryButtonHorizontalPadding,
+                      vertical: UiDimensions.secondaryButtonVerticalPadding,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(
+                        UiDimensions.secondaryButtonCornerRadius,
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -965,15 +1108,21 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
             _buildWalletBanner(context, meta),
             const SizedBox(height: 12),
             OutlinedButton.icon(
-              onPressed: () { 
+              onPressed: () {
                 _showSkinShop(context);
               },
               icon: const Icon(Icons.color_lens_rounded),
               label: const Text('CUSTOMIZE'),
               style: OutlinedButton.styleFrom(
                 foregroundColor: Colors.white,
-                side: BorderSide(color: Colors.white.withOpacity(0.4), width: 1.4),
-                padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
+                side: BorderSide(
+                  color: Colors.white.withOpacity(0.4),
+                  width: 1.4,
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 28,
+                  vertical: 16,
+                ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(18),
                 ),
@@ -995,44 +1144,43 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
       builder: (context, ad, _) {
         final ready = ad.isRewardedAdReady;
         return ElevatedButton.icon(
-          onPressed: ready
-              ? () {
-                  final sound = context.read<SoundProvider>();
-                  ad.showRewardAd(
-                    placement: 'ready_boost',
-                    onReward: () {
-                      meta.queueRunBoost(
-                        const RunBoost(
-                          coinMultiplier: 2.0,
-                          inkRegenMultiplier: 1.25,
-                          duration: Duration(seconds: 30),
-                        ),
-                      );
-                      _showSnackMessage(
-                        context,
-                        '30s coin boost primed for your next run!',
-                      );
-                    },
-                    onAdOpened: () {
-                      sound.pauseBgmForInterruption();
-                    },
-                    onAdClosed: () {
-                      sound.resumeBgmAfterInterruption();
-                    },
-                    onFallbackReward: () {
-                      meta.addCoins(80);
-                      _showSnackMessage(
-                        context,
-                        'Ad unavailable — grabbed 80 coins instead.',
-                      );
-                    },
-                  );
-                }
-              : null,
+          onPressed:
+              ready
+                  ? () {
+                    final sound = context.read<SoundProvider>();
+                    ad.showRewardAd(
+                      placement: 'ready_boost',
+                      onReward: () {
+                        meta.queueRunBoost(
+                          const RunBoost(
+                            coinMultiplier: 2.0,
+                            inkRegenMultiplier: 1.25,
+                            duration: Duration(seconds: 30),
+                          ),
+                        );
+                        _showSnackMessage(
+                          context,
+                          '30s coin boost primed for your next run!',
+                        );
+                      },
+                      onAdOpened: () {
+                        sound.pauseBgmForInterruption();
+                      },
+                      onAdClosed: () {
+                        sound.resumeBgmAfterInterruption();
+                      },
+                      onFallbackReward: () {
+                        meta.addCoins(80);
+                        _showSnackMessage(
+                          context,
+                          'Ad unavailable — grabbed 80 coins instead.',
+                        );
+                      },
+                    );
+                  }
+                  : null,
           icon: const Icon(Icons.bolt_rounded),
-          label: Text(
-            ready ? 'WATCH AD: 30s BOOST' : 'Loading ad bonus…',
-          ),
+          label: Text(ready ? 'WATCH AD: 30s BOOST' : 'Loading ad bonus…'),
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFFF97316),
             foregroundColor: Colors.white,
@@ -1176,7 +1324,10 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 14,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.black.withOpacity(0.28),
                   borderRadius: BorderRadius.circular(22),
@@ -1220,15 +1371,18 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
               ),
               const SizedBox(height: 12),
               Selector<LineProvider, _InkUiState>(
-                selector: (_, line) => _InkUiState(
-                  canStartNewLine: line.canStartNewLine,
-                  inkProgress: line.inkProgress,
-                ),
+                selector:
+                    (_, line) => _InkUiState(
+                      canStartNewLine: line.canStartNewLine,
+                      inkProgress: line.inkProgress,
+                    ),
                 builder: (context, inkState, _) {
                   return Container(
                     width: 240,
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.black.withOpacity(0.24),
                       borderRadius: BorderRadius.circular(18),
@@ -1237,8 +1391,12 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          inkState.canStartNewLine ? 'Ink ready' : 'Ink recharging',
-                          style: textTheme.bodyLarge?.copyWith(color: Colors.white),
+                          inkState.canStartNewLine
+                              ? 'Ink ready'
+                              : 'Ink recharging',
+                          style: textTheme.bodyLarge?.copyWith(
+                            color: Colors.white,
+                          ),
                         ),
                         const SizedBox(height: 8),
                         ClipRRect(
@@ -1296,8 +1454,11 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.self_improvement_rounded,
-              color: Color(0xFF38BDF8), size: 22),
+          const Icon(
+            Icons.self_improvement_rounded,
+            color: Color(0xFF38BDF8),
+            size: 22,
+          ),
           const SizedBox(width: 10),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1360,14 +1521,17 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                 style: textTheme.bodySmall?.copyWith(color: Colors.white70),
               ),
             ],
-          )
+          ),
         ],
       ),
     );
   }
 
   Widget _buildGameOverUI(
-      BuildContext context, GameProvider game, MetaProvider meta) {
+    BuildContext context,
+    GameProvider game,
+    MetaProvider meta,
+  ) {
     final adProvider = context.watch<AdProvider>();
     final textTheme = Theme.of(context).textTheme;
     final canRevive = game.canRevive;
@@ -1430,9 +1594,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                 const SizedBox(height: 6),
                 Text(
                   'Next goal: ${game.nextScoreBonusTarget} pts for +${game.nextScoreBonusReward} coins',
-                  style: textTheme.bodySmall?.copyWith(
-                    color: Colors.white70,
-                  ),
+                  style: textTheme.bodySmall?.copyWith(color: Colors.white70),
                 ),
                 const SizedBox(height: 28),
                 Wrap(
@@ -1463,7 +1625,10 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF38BDF8),
                         foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 28,
+                          vertical: 16,
+                        ),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(18),
                         ),
@@ -1491,7 +1656,10 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFFF97316),
                           foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 28,
+                            vertical: 16,
+                          ),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(18),
                           ),
@@ -1499,18 +1667,21 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                       ),
                     if (canRevive)
                       OutlinedButton.icon(
-                        onPressed: meta.totalCoins >= coinReviveCost
-                            ? () async {
-                                final success = await meta.spendCoins(coinReviveCost);
-                                if (success) {
-                                  game.revivePlayer();
-                                  _showSnackMessage(
-                                    context,
-                                    'Spent $coinReviveCost coins to revive!',
+                        onPressed:
+                            meta.totalCoins >= coinReviveCost
+                                ? () async {
+                                  final success = await meta.spendCoins(
+                                    coinReviveCost,
                                   );
+                                  if (success) {
+                                    game.revivePlayer();
+                                    _showSnackMessage(
+                                      context,
+                                      'Spent $coinReviveCost coins to revive!',
+                                    );
+                                  }
                                 }
-                              }
-                            : null,
+                                : null,
                         icon: const Icon(Icons.bolt_rounded),
                         label: Text('Revive ($coinReviveCost)'),
                         style: OutlinedButton.styleFrom(
@@ -1519,7 +1690,9 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                             color: Colors.white.withOpacity(0.35),
                           ),
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 24, vertical: 16),
+                            horizontal: 24,
+                            vertical: 16,
+                          ),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(18),
                           ),
@@ -1614,9 +1787,10 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
     final owned = meta.isSkinOwned(skin.id);
     final selected = meta.selectedSkin.id == skin.id;
     final theme = Theme.of(rootContext).textTheme;
-    final buttonLabel = selected
-        ? 'Equipped'
-        : owned
+    final buttonLabel =
+        selected
+            ? 'Equipped'
+            : owned
             ? 'Equip'
             : 'Unlock ${skin.cost}';
     final Color backgroundColor;
@@ -1638,7 +1812,10 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
         color: Colors.white.withOpacity(0.05),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: selected ? const Color(0xFF38BDF8) : Colors.white.withOpacity(0.08),
+          color:
+              selected
+                  ? const Color(0xFF38BDF8)
+                  : Colors.white.withOpacity(0.08),
           width: selected ? 2 : 1,
         ),
       ),
@@ -1686,35 +1863,40 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
             ),
           ),
           ElevatedButton(
-            onPressed: selected
-                ? null
-                : () async {
-                    if (!owned) {
-                      final success = await meta.purchaseSkin(skin);
-                      if (!success) {
-                        ScaffoldMessenger.of(rootContext).showSnackBar(
-                          const SnackBar(
-                            content: Text('Not enough coins to unlock this skin.'),
-                            behavior: SnackBarBehavior.floating,
-                          ),
-                        );
-                        return;
-                      } else {
-                        ScaffoldMessenger.of(rootContext).showSnackBar(
-                          SnackBar(
-                            content: Text('${skin.name} unlocked!'),
-                            behavior: SnackBarBehavior.floating,
-                          ),
-                        );
+            onPressed:
+                selected
+                    ? null
+                    : () async {
+                      if (!owned) {
+                        final success = await meta.purchaseSkin(skin);
+                        if (!success) {
+                          ScaffoldMessenger.of(rootContext).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Not enough coins to unlock this skin.',
+                              ),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                          return;
+                        } else {
+                          ScaffoldMessenger.of(rootContext).showSnackBar(
+                            SnackBar(
+                              content: Text('${skin.name} unlocked!'),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        }
                       }
-                    }
-                    await meta.selectSkin(skin);
-                  },
+                      await meta.selectSkin(skin);
+                    },
             style: ElevatedButton.styleFrom(
               backgroundColor: backgroundColor,
               foregroundColor: foregroundColor,
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              textStyle: theme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+              textStyle: theme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
             ),
             child: Text(buttonLabel),
           ),
@@ -1733,7 +1915,8 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
     }
     final isLeftHanded = meta.leftHandedMode;
     final jumpLabel = isLeftHanded ? 'Tap right to jump!' : 'Tap left to jump!';
-    final drawLabel = isLeftHanded ? 'Drag left to draw!' : 'Drag right to draw!';
+    final drawLabel =
+        isLeftHanded ? 'Drag left to draw!' : 'Drag right to draw!';
     return IgnorePointer(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -1747,17 +1930,19 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                 opacity: game.showJumpHint ? 1 : 0,
                 duration: const Duration(milliseconds: 250),
                 child: Column(
-                  crossAxisAlignment: isLeftHanded
-                      ? CrossAxisAlignment.end
-                      : CrossAxisAlignment.start,
+                  crossAxisAlignment:
+                      isLeftHanded
+                          ? CrossAxisAlignment.end
+                          : CrossAxisAlignment.start,
                   children: [
                     _buildTutorialBubble(
                       context: context,
                       icon: Icons.touch_app_rounded,
                       text: jumpLabel,
-                      alignment: isLeftHanded
-                          ? CrossAxisAlignment.end
-                          : CrossAxisAlignment.start,
+                      alignment:
+                          isLeftHanded
+                              ? CrossAxisAlignment.end
+                              : CrossAxisAlignment.start,
                     ),
                     const SizedBox(height: 12),
                     _buildGhostHand(forJump: true, leftHanded: isLeftHanded),
@@ -1773,17 +1958,19 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                 opacity: game.showDrawHint ? 1 : 0,
                 duration: const Duration(milliseconds: 250),
                 child: Column(
-                  crossAxisAlignment: isLeftHanded
-                      ? CrossAxisAlignment.start
-                      : CrossAxisAlignment.end,
+                  crossAxisAlignment:
+                      isLeftHanded
+                          ? CrossAxisAlignment.start
+                          : CrossAxisAlignment.end,
                   children: [
                     _buildTutorialBubble(
                       context: context,
                       icon: Icons.gesture_rounded,
                       text: drawLabel,
-                      alignment: isLeftHanded
-                          ? CrossAxisAlignment.start
-                          : CrossAxisAlignment.end,
+                      alignment:
+                          isLeftHanded
+                              ? CrossAxisAlignment.start
+                              : CrossAxisAlignment.end,
                     ),
                     const SizedBox(height: 12),
                     _buildGhostHand(forJump: false, leftHanded: isLeftHanded),
@@ -1801,10 +1988,12 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
     return AnimatedBuilder(
       animation: _ghostHandAnimation,
       builder: (context, child) {
-        final verticalShift = forJump ? -28.0 * _ghostHandAnimation.value : -12.0;
-        final horizontalShift = forJump
-            ? 0.0
-            : (leftHanded ? -40.0 : 40.0) * _ghostHandAnimation.value;
+        final verticalShift =
+            forJump ? -28.0 * _ghostHandAnimation.value : -12.0;
+        final horizontalShift =
+            forJump
+                ? 0.0
+                : (leftHanded ? -40.0 : 40.0) * _ghostHandAnimation.value;
         return Transform.translate(
           offset: Offset(horizontalShift, verticalShift),
           child: child,
@@ -1846,7 +2035,9 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
               letterSpacing: 1.05,
             ),
             textAlign:
-                alignment == CrossAxisAlignment.start ? TextAlign.left : TextAlign.right,
+                alignment == CrossAxisAlignment.start
+                    ? TextAlign.left
+                    : TextAlign.right,
           ),
         ],
       ),

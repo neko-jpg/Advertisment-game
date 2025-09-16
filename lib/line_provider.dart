@@ -1,13 +1,12 @@
-
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
 class DrawnLine {
   DrawnLine({required this.points, required this.creationTime})
-      : minX = points.first.dx,
-        maxX = points.first.dx,
-        version = 1;
+    : minX = points.first.dx,
+      maxX = points.first.dx,
+      version = 1;
 
   final List<Offset> points;
   final DateTime creationTime;
@@ -37,7 +36,8 @@ class LineProvider with ChangeNotifier {
 
   double get inkAmount => _inkAmount;
 
-  int get signature => _lines.fold<int>(0, (value, line) => value ^ line.version);
+  int get signature =>
+      _lines.fold<int>(0, (value, line) => value ^ line.version);
 
   double get _maxInk => (_baseMaxInk + _capacityBonus).clamp(60.0, 200.0);
 
@@ -125,9 +125,8 @@ class LineProvider with ChangeNotifier {
     if (elapsed.inMilliseconds > 0) {
       _lastInkUpdate = now;
       if (_inkAmount < _maxInk) {
-        final regenAmount = _currentRegenPerSecond *
-            elapsed.inMilliseconds /
-            1000.0;
+        final regenAmount =
+            _currentRegenPerSecond * elapsed.inMilliseconds / 1000.0;
         _inkAmount = (_inkAmount + regenAmount).clamp(0.0, _maxInk);
       }
     }
@@ -160,10 +159,7 @@ class LineProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  void configureUpgrades({
-    double? regenMultiplier,
-    double? capacityBonus,
-  }) {
+  void configureUpgrades({double? regenMultiplier, double? capacityBonus}) {
     if (regenMultiplier != null) {
       _regenMultiplier = regenMultiplier.clamp(0.5, 3.0);
     }

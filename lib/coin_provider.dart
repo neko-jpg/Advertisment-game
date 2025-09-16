@@ -1,4 +1,3 @@
-
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -56,13 +55,15 @@ class CoinProvider with ChangeNotifier {
       return;
     }
     final double dtSeconds = deltaMs / 1000.0;
-    final double spawnRate = _baseSpawnRatePerSecond *
+    final double spawnRate =
+        _baseSpawnRatePerSecond *
         _spawnMultiplier *
         (_inRestWindow ? _restSpawnBonus : 1.0);
     final double spawnProbability = 1 - math.exp(-spawnRate * dtSeconds);
     if (_random.nextDouble() < spawnProbability) {
       final yPosition =
-          _random.nextDouble() * (screenHeight - 100).clamp(0.0, screenHeight) + 50;
+          _random.nextDouble() * (screenHeight - 100).clamp(0.0, screenHeight) +
+          50;
       _coins.add(Coin(position: Offset(screenWidth + 50, yPosition)));
       notifyListeners();
     }
@@ -83,7 +84,10 @@ class CoinProvider with ChangeNotifier {
 
     final collectedCoins = <Coin>[];
     for (var coin in _coins) {
-      final coinRect = Rect.fromCircle(center: coin.position, radius: coin.radius);
+      final coinRect = Rect.fromCircle(
+        center: coin.position,
+        radius: coin.radius,
+      );
       if (playerRect.overlaps(coinRect)) {
         collectedCoins.add(coin);
         _coinsCollected++;
@@ -91,7 +95,8 @@ class CoinProvider with ChangeNotifier {
     }
 
     _coins.removeWhere(
-      (coin) => collectedCoins.contains(coin) || coin.position.dx < -coin.radius,
+      (coin) =>
+          collectedCoins.contains(coin) || coin.position.dx < -coin.radius,
     );
 
     if (collectedCoins.isNotEmpty) {

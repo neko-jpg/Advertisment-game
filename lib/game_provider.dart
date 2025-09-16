@@ -1,8 +1,8 @@
-
 import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
@@ -15,6 +15,7 @@ import 'meta_provider.dart';
 import 'obstacle_provider.dart';
 import 'sound_provider.dart';
 import 'remote_config_provider.dart';
+import 'constants/game_constants.dart';
 
 enum GameState { ready, running, dead, result }
 
@@ -34,14 +35,15 @@ class _DifficultyTuning {
 
 class GameProvider with ChangeNotifier {
   GameState _gameState = GameState.ready;
-  final double _playerX = 100.0;
-  double _playerY = 380.0;
+  final double _playerX = GameConstants.playerStartX;
+  double _playerY = GameConstants.playerStartY;
   double _playerYSpeed = 0.0;
   int _score = 0;
   Ticker? _ticker;
   Size _screenSize = Size.zero;
-  double _baseCoyoteDurationMs = 120.0;
-  static const double _jumpBufferDurationMs = 100.0;
+  double _baseCoyoteDurationMs = GameConstants.baseCoyoteDurationMs;
+  static const double _jumpBufferDurationMs =
+      GameConstants.jumpBufferDurationMs;
   double _coyoteTimerMs = 0.0;
   double _jumpBufferTimerMs = 0.0;
   DateTime? _lastFrameTimestamp;
@@ -72,11 +74,16 @@ class GameProvider with ChangeNotifier {
     coinMultiplier: 1.0,
     safeWindowPx: 180,
   );
-  UpgradeSnapshot _activeUpgrades =
-      const UpgradeSnapshot(inkRegenMultiplier: 1, maxRevives: 1, coyoteBonusMs: 0);
+  UpgradeSnapshot _activeUpgrades = const UpgradeSnapshot(
+    inkRegenMultiplier: 1,
+    maxRevives: 1,
+    coyoteBonusMs: 0,
+  );
   final ValueNotifier<int> _worldTick = ValueNotifier<int>(0);
   final ValueNotifier<int> _hudTick = ValueNotifier<int>(0);
-  final ValueNotifier<GameToast?> _toastNotifier = ValueNotifier<GameToast?>(null);
+  final ValueNotifier<GameToast?> _toastNotifier = ValueNotifier<GameToast?>(
+    null,
+  );
   Timer? _toastTimer;
   DifficultyRemoteConfig _remoteDifficulty = const DifficultyRemoteConfig(
     baseSpeedMultiplier: 1.0,
@@ -87,14 +94,50 @@ class GameProvider with ChangeNotifier {
     tutorialSafeWindowMs: 30000,
     emergencyInkFloor: 14,
   );
+  DifficultyTuningRemoteConfig _difficultyTuning =
+      const DifficultyTuningRemoteConfig(
+        defaultSafeWindowPx: 180.0,
+        emptyHistorySafeWindowPx: 200.0,
+        minSpeedMultiplier: 0.7,
+        maxSpeedMultiplier: 1.6,
+        minDensityMultiplier: 0.6,
+        maxDensityMultiplier: 1.8,
+        minCoinMultiplier: 0.7,
+        maxCoinMultiplier: 1.8,
+        minSafeWindowPx: 140.0,
+        maxSafeWindowPx: 260.0,
+        longRunDurationSeconds: 45,
+        shortRunDurationSeconds: 20,
+        consistentRunDurationSeconds: 30,
+        highAccidentRate: 0.66,
+        lowAccidentRate: 0.2,
+        highScoreThreshold: 900,
+        lowScoreThreshold: 300,
+        longRunSpeedDelta: 0.18,
+        longRunDensityDelta: 0.12,
+        longRunCoinDelta: -0.12,
+        shortRunSpeedDelta: -0.12,
+        shortRunDensityDelta: -0.18,
+        shortRunCoinDelta: 0.18,
+        highAccidentSpeedDelta: -0.15,
+        highAccidentDensityDelta: -0.18,
+        highAccidentSafeWindowDelta: 60.0,
+        highAccidentCoinDelta: 0.15,
+        lowAccidentSpeedDelta: 0.08,
+        lowAccidentDensityDelta: 0.1,
+        highScoreDensityDelta: 0.08,
+        highScoreCoinDelta: -0.08,
+        lowScoreDensityDelta: -0.1,
+        lowScoreCoinDelta: 0.12,
+      );
   int _nextSpeedRampScore = 380;
   double _currentSpeedMultiplier = 1.0;
   double _speedRampIncrease = 0.35;
   double _maxSpeedMultiplier = 2.2;
   bool _emergencyInkAvailable = false;
   int _lastRunBonusCoins = 0;
-  int _nextBonusScore = 400;
-  int _nextBonusReward = 20;
+  int _nextBonusScore = GameConstants.scoreBonusStep;
+  int _nextBonusReward = GameConstants.baseBonusReward;
   double _lastRestProgressNotified = 0.0;
   RunBoost? _activeRunBoost;
   double _boostRemainingMs = 0.0;
@@ -122,6 +165,7 @@ class GameProvider with ChangeNotifier {
   }) {
     _ticker = vsync.createTicker(_gameLoop);
     _applyRemoteDifficulty(remoteConfigProvider.difficulty);
+    _difficultyTuning = remoteConfigProvider.difficultyTuning;
   }
 
   // Getters
@@ -137,11 +181,15 @@ class GameProvider with ChangeNotifier {
   bool get showJumpHint =>
       isTutorialActive && !_didJumpThisRun && _elapsedRunMs <= 8000;
   bool get showDrawHint =>
-      isTutorialActive && !_didDrawLineThisRun &&
-      _elapsedRunMs >= 5000 && _elapsedRunMs <= 18000;
+      isTutorialActive &&
+      !_didDrawLineThisRun &&
+      _elapsedRunMs >= 5000 &&
+      _elapsedRunMs <= 18000;
   bool get isRestWindow => _restWindowActive;
   double get restWindowProgress =>
-      _restWindowActive ? (_restWindowElapsedMs / _restDurationMs).clamp(0.0, 1.0) : 0.0;
+      _restWindowActive
+          ? (_restWindowElapsedMs / _restDurationMs).clamp(0.0, 1.0)
+          : 0.0;
   bool get canRevive => _revivesUsedThisRun < _activeUpgrades.maxRevives;
   ValueListenable<int> get worldListenable => _worldTick;
   ValueListenable<int> get hudListenable => _hudTick;
@@ -151,22 +199,25 @@ class GameProvider with ChangeNotifier {
   int get nextScoreBonusReward => _nextBonusReward;
   int get worldFrame => _worldTick.value;
   bool get isBoostActive => _activeRunBoost != null && _boostRemainingMs > 0;
-  double get boostRemainingSeconds => (_boostRemainingMs / 1000).clamp(0.0, 999.0);
+  double get boostRemainingSeconds =>
+      (_boostRemainingMs / 1000).clamp(0.0, 999.0);
   double get boostCoinMultiplier => _activeRunBoost?.coinMultiplier ?? 1.0;
   double get boostInkMultiplier => _activeRunBoost?.inkRegenMultiplier ?? 1.0;
 
-  static const double _restIntervalMs = 30000.0;
-  static const double _restDurationMs = 6000.0;
+  static const double _restIntervalMs = GameConstants.restIntervalMs;
+  static const double _restDurationMs = GameConstants.restDurationMs;
 
   void _applyRemoteDifficulty(DifficultyRemoteConfig config) {
     _remoteDifficulty = config;
     _speedRampIncrease = config.speedRampIncrease;
     _maxSpeedMultiplier = config.maxSpeedMultiplier;
     _nextSpeedRampScore = config.speedRampIntervalScore;
-    _currentSpeedMultiplier =
-        (_activeDifficulty.speedMultiplier * config.baseSpeedMultiplier)
-            .clamp(0.6, _maxSpeedMultiplier);
-    _nextBonusScore = ((score ~/ 400) + 1) * 400;
+    _currentSpeedMultiplier = (_activeDifficulty.speedMultiplier *
+            config.baseSpeedMultiplier)
+        .clamp(GameConstants.absoluteMinSpeedMultiplier, _maxSpeedMultiplier);
+    _nextBonusScore =
+        ((score ~/ GameConstants.scoreBonusStep) + 1) *
+        GameConstants.scoreBonusStep;
     _nextBonusReward = _predictBonusForScore(_nextBonusScore);
   }
 
@@ -192,11 +243,12 @@ class GameProvider with ChangeNotifier {
     if (tier <= 0) {
       return 0;
     }
-    return 20 + (tier - 1) * 10;
+    return GameConstants.baseBonusReward +
+        (tier - 1) * GameConstants.bonusRewardIncrement;
   }
 
   int _resolveScoreBonus(int score) {
-    final tier = score ~/ 400;
+    final tier = score ~/ GameConstants.scoreBonusStep;
     if (tier <= 0) {
       return 0;
     }
@@ -204,13 +256,13 @@ class GameProvider with ChangeNotifier {
   }
 
   int _predictBonusForScore(int score) {
-    final tier = (score / 400).ceil();
+    final tier = (score / GameConstants.scoreBonusStep).ceil();
     return _bonusRewardForTier(tier);
   }
 
   void _updateNextBonusTarget(int score) {
-    final nextTier = (score ~/ 400) + 1;
-    _nextBonusScore = nextTier * 400;
+    final nextTier = (score ~/ GameConstants.scoreBonusStep) + 1;
+    _nextBonusScore = nextTier * GameConstants.scoreBonusStep;
     _nextBonusReward = _predictBonusForScore(_nextBonusScore);
   }
 
@@ -263,7 +315,8 @@ class GameProvider with ChangeNotifier {
     lineProvider
       ..configureUpgrades(
         regenMultiplier:
-            _activeUpgrades.inkRegenMultiplier * (boost?.inkRegenMultiplier ?? 1.0),
+            _activeUpgrades.inkRegenMultiplier *
+            (boost?.inkRegenMultiplier ?? 1.0),
       )
       ..clearAllLines();
     obstacleProvider.reset();
@@ -275,9 +328,12 @@ class GameProvider with ChangeNotifier {
     _applyRemoteDifficulty(_remoteDifficulty);
     _currentSpeedMultiplier = (_activeDifficulty.speedMultiplier *
             _remoteDifficulty.baseSpeedMultiplier)
-        .clamp(0.6, _maxSpeedMultiplier);
+        .clamp(GameConstants.absoluteMinSpeedMultiplier, _maxSpeedMultiplier);
     if (isTutorialActive) {
-      _currentSpeedMultiplier = _currentSpeedMultiplier.clamp(0.6, 0.85);
+      _currentSpeedMultiplier = _currentSpeedMultiplier.clamp(
+        GameConstants.absoluteMinSpeedMultiplier,
+        GameConstants.tutorialMaxSpeedMultiplier,
+      );
     }
     _nextSpeedRampScore = _remoteDifficulty.speedRampIntervalScore;
     final startGrace = _nextRunGrace;
@@ -290,7 +346,7 @@ class GameProvider with ChangeNotifier {
       startGrace: startGrace,
     );
     obstacleProvider.configureTutorialWindow(
-      durationMs: _remoteDifficulty.tutorialSafeWindowMs,
+      durationMs: _remoteDifficulty.tutorialSafeWindowMs.toDouble(),
     );
     coinProvider.configureSpawn(multiplier: _activeDifficulty.coinMultiplier);
     if (boost != null) {
@@ -369,15 +425,18 @@ class GameProvider with ChangeNotifier {
       _markHudDirty();
       _pushToast(
         GameToast(
-          message: _restWindowActive
-              ? 'Rest zone — ink regen boosted'
-              : 'Speed resumes! Stay sharp',
-          icon: _restWindowActive
-              ? Icons.self_improvement_rounded
-              : Icons.flash_on_rounded,
-          color: _restWindowActive
-              ? const Color(0xFF38BDF8)
-              : const Color(0xFFF97316),
+          message:
+              _restWindowActive
+                  ? 'Rest zone 窶・ink regen boosted'
+                  : 'Speed resumes! Stay sharp',
+          icon:
+              _restWindowActive
+                  ? Icons.self_improvement_rounded
+                  : Icons.flash_on_rounded,
+          color:
+              _restWindowActive
+                  ? const Color(0xFF38BDF8)
+                  : const Color(0xFFF97316),
         ),
       );
     }
@@ -387,7 +446,9 @@ class GameProvider with ChangeNotifier {
       _markHudDirty();
       if (_boostRemainingMs <= 0) {
         _activeRunBoost = null;
-        coinProvider.configureSpawn(multiplier: _activeDifficulty.coinMultiplier);
+        coinProvider.configureSpawn(
+          multiplier: _activeDifficulty.coinMultiplier,
+        );
         lineProvider.configureUpgrades(
           regenMultiplier: _activeUpgrades.inkRegenMultiplier,
         );
@@ -459,7 +520,8 @@ class GameProvider with ChangeNotifier {
             (_playerX >= p2.dx && _playerX <= p1.dx)) {
           final double progress = (_playerX - p1.dx) / deltaX;
           final double lineY = p1.dy + (p2.dy - p1.dy) * progress;
-          if (_playerYSpeed >= 0 && (_playerY > lineY - 25 && _playerY < lineY + 5)) {
+          if (_playerYSpeed >= 0 &&
+              (_playerY > lineY - 25 && _playerY < lineY + 5)) {
             _playerY = lineY - 20;
             _playerYSpeed = 0;
             onGround = true;
@@ -519,8 +581,12 @@ class GameProvider with ChangeNotifier {
 
     bool collisionWarning = false;
     for (var obstacle in obstacleProvider.obstacles) {
-      final obstacleRect =
-          Rect.fromLTWH(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+      final obstacleRect = Rect.fromLTWH(
+        obstacle.x,
+        obstacle.y,
+        obstacle.width,
+        obstacle.height,
+      );
       if (playerRect.overlaps(obstacleRect)) {
         if (_invulnerabilityMs > 0) {
           collisionWarning = true;
@@ -556,8 +622,8 @@ class GameProvider with ChangeNotifier {
 
     // --- Difficulty Curve ---
     if (_score >= _nextSpeedRampScore) {
-      _currentSpeedMultiplier =
-          (_currentSpeedMultiplier + _speedRampIncrease).clamp(0.6, _maxSpeedMultiplier);
+      _currentSpeedMultiplier = (_currentSpeedMultiplier + _speedRampIncrease)
+          .clamp(GameConstants.absoluteMinSpeedMultiplier, _maxSpeedMultiplier);
       obstacleProvider.setSpeedMultiplier(_currentSpeedMultiplier);
       _nextSpeedRampScore += _remoteDifficulty.speedRampIntervalScore;
       _pushToast(
@@ -667,9 +733,8 @@ class GameProvider with ChangeNotifier {
       return;
     }
     final stats = _buildRunStats();
-    final completedBefore = metaProvider.dailyMissions
-        .where((mission) => mission.completed)
-        .length;
+    final completedBefore =
+        metaProvider.dailyMissions.where((mission) => mission.completed).length;
     if (stats.coins > 0) {
       await metaProvider.addCoins(stats.coins);
     }
@@ -679,25 +744,26 @@ class GameProvider with ChangeNotifier {
     }
     _updateNextBonusTarget(stats.score);
     metaProvider.applyRunStats(stats);
-    final completedAfter = metaProvider.dailyMissions
-        .where((mission) => mission.completed)
-        .length;
+    final completedAfter =
+        metaProvider.dailyMissions.where((mission) => mission.completed).length;
     _recentRuns.insert(0, stats);
-    if (_recentRuns.length > 5) {
+    if (_recentRuns.length > GameConstants.maxRecentRunsTracked) {
       _recentRuns.removeLast();
     }
     if (stats.accidentDeath) {
       _accidentStreak++;
-      if (_accidentStreak >= 2) {
-        _nextRunGrace = const Duration(seconds: 5);
+      if (_accidentStreak >= GameConstants.accidentStreakGraceThreshold) {
+        _nextRunGrace = GameConstants.accidentGraceDuration;
         _accidentStreak = 0;
       }
     } else {
       _accidentStreak = 0;
     }
     adProvider.registerRunEnd(_lastRunDuration);
-    final missionsCompletedDelta =
-        math.max(0, completedAfter - completedBefore);
+    final missionsCompletedDelta = math.max(
+      0,
+      completedAfter - completedBefore,
+    );
     final totalCoinsAfterRun = metaProvider.totalCoins;
     if (stats.coins > 0) {
       unawaited(
@@ -763,21 +829,20 @@ class GameProvider with ChangeNotifier {
 
   _DifficultyTuning _evaluateDifficulty() {
     if (_recentRuns.isEmpty) {
-      return const _DifficultyTuning(
+      return _DifficultyTuning(
         speedMultiplier: 1.0,
         densityMultiplier: 1.0,
         coinMultiplier: 1.0,
-        safeWindowPx: 200,
+        safeWindowPx: _difficultyTuning.emptyHistorySafeWindowPx,
       );
     }
-    final recent = _recentRuns.take(3).toList();
-    final avgDurationSeconds = recent
-            .map((r) => r.duration.inSeconds)
-            .fold<int>(0, (a, b) => a + b) /
+    final recent =
+        _recentRuns.take(GameConstants.difficultySampleSize).toList();
+    final avgDurationSeconds =
+        recent.map((r) => r.duration.inSeconds).fold<int>(0, (a, b) => a + b) /
         recent.length;
-    final avgScore = recent
-            .map((r) => r.score)
-            .fold<int>(0, (a, b) => a + b) /
+    final avgScore =
+        recent.map((r) => r.score).fold<int>(0, (a, b) => a + b) /
         recent.length;
     final accidentRate =
         recent.where((r) => r.accidentDeath).length / recent.length;
@@ -785,44 +850,74 @@ class GameProvider with ChangeNotifier {
     double speed = 1.0;
     double density = 1.0;
     double coin = 1.0;
-    double safeWindow = 180.0;
+    double safeWindow = _difficultyTuning.defaultSafeWindowPx;
 
-    if (avgDurationSeconds > 45) {
-      speed += 0.18;
-      density += 0.12;
-      coin -= 0.12;
-    } else if (avgDurationSeconds < 20) {
-      speed -= 0.12;
-      density -= 0.18;
-      coin += 0.18;
+    if (avgDurationSeconds > _difficultyTuning.longRunDurationSeconds) {
+      speed += _difficultyTuning.longRunSpeedDelta;
+      density += _difficultyTuning.longRunDensityDelta;
+      coin += _difficultyTuning.longRunCoinDelta;
+    } else if (avgDurationSeconds < _difficultyTuning.shortRunDurationSeconds) {
+      speed += _difficultyTuning.shortRunSpeedDelta;
+      density += _difficultyTuning.shortRunDensityDelta;
+      coin += _difficultyTuning.shortRunCoinDelta;
     }
 
-    if (accidentRate > 0.66) {
-      speed -= 0.15;
-      density -= 0.18;
-      safeWindow += 60;
-      coin += 0.15;
-    } else if (accidentRate < 0.2 && avgDurationSeconds > 30) {
-      speed += 0.08;
-      density += 0.1;
+    if (accidentRate > _difficultyTuning.highAccidentRate) {
+      speed += _difficultyTuning.highAccidentSpeedDelta;
+      density += _difficultyTuning.highAccidentDensityDelta;
+      safeWindow += _difficultyTuning.highAccidentSafeWindowDelta;
+      coin += _difficultyTuning.highAccidentCoinDelta;
+    } else if (accidentRate < _difficultyTuning.lowAccidentRate &&
+        avgDurationSeconds > _difficultyTuning.consistentRunDurationSeconds) {
+      speed += _difficultyTuning.lowAccidentSpeedDelta;
+      density += _difficultyTuning.lowAccidentDensityDelta;
     }
 
-    if (avgScore > 900) {
-      density += 0.08;
-      coin -= 0.08;
-    } else if (avgScore < 300) {
-      density -= 0.1;
-      coin += 0.12;
+    if (avgScore > _difficultyTuning.highScoreThreshold) {
+      density += _difficultyTuning.highScoreDensityDelta;
+      coin += _difficultyTuning.highScoreCoinDelta;
+    } else if (avgScore < _difficultyTuning.lowScoreThreshold) {
+      density += _difficultyTuning.lowScoreDensityDelta;
+      coin += _difficultyTuning.lowScoreCoinDelta;
     }
 
     return _DifficultyTuning(
-      speedMultiplier: speed.clamp(0.7, 1.6),
-      densityMultiplier: density.clamp(0.6, 1.8),
-      coinMultiplier: coin.clamp(0.7, 1.8),
-      safeWindowPx: safeWindow.clamp(140, 260),
+      speedMultiplier: speed.clamp(
+        _difficultyTuning.minSpeedMultiplier,
+        _difficultyTuning.maxSpeedMultiplier,
+      ),
+      densityMultiplier: density.clamp(
+        _difficultyTuning.minDensityMultiplier,
+        _difficultyTuning.maxDensityMultiplier,
+      ),
+      coinMultiplier: coin.clamp(
+        _difficultyTuning.minCoinMultiplier,
+        _difficultyTuning.maxCoinMultiplier,
+      ),
+      safeWindowPx: safeWindow.clamp(
+        _difficultyTuning.minSafeWindowPx,
+        _difficultyTuning.maxSafeWindowPx,
+      ),
     );
   }
-  
+
+  @visibleForTesting
+  void setDifficultyTuningForTesting(DifficultyTuningRemoteConfig tuning) {
+    _difficultyTuning = tuning;
+  }
+
+  @visibleForTesting
+  void setRecentRunsForTesting(List<RunStats> runs) {
+    _recentRuns
+      ..clear()
+      ..addAll(runs);
+  }
+
+  @visibleForTesting
+  _DifficultyTuning evaluateDifficultyForTesting() {
+    return _evaluateDifficulty();
+  }
+
   // Called by ChangeNotifierProxyProvider when dependencies change.
   void updateDependencies(
     AdProvider ad,
@@ -839,9 +934,12 @@ class GameProvider with ChangeNotifier {
     metaProvider = meta;
     remoteConfigProvider = remote;
     _applyRemoteDifficulty(remote.difficulty);
+    _difficultyTuning = remote.difficultyTuning;
     if (_gameState == GameState.running) {
-      _currentSpeedMultiplier =
-          _currentSpeedMultiplier.clamp(0.6, _maxSpeedMultiplier);
+      _currentSpeedMultiplier = _currentSpeedMultiplier.clamp(
+        GameConstants.absoluteMinSpeedMultiplier,
+        _maxSpeedMultiplier,
+      );
       obstacleProvider.setSpeedMultiplier(_currentSpeedMultiplier);
     }
   }

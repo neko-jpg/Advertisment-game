@@ -34,6 +34,9 @@ class MetaProvider with ChangeNotifier {
     UpgradeType.revive: 0,
     UpgradeType.coyote: 0,
   };
+  List<UpgradeDefinition> _upgradeDefinitions = List.of(
+    _defaultUpgradeDefinitions,
+  );
 
   SharedPreferences? _prefs;
   bool _initialized = false;
@@ -65,9 +68,9 @@ class MetaProvider with ChangeNotifier {
   bool get hasDailyMissions => _dailyMissions.isNotEmpty;
 
   PlayerSkin get selectedSkin => _skins.firstWhere(
-        (skin) => skin.id == _selectedSkinId,
-        orElse: () => _skins.first,
-      );
+    (skin) => skin.id == _selectedSkinId,
+    orElse: () => _skins.first,
+  );
 
   bool isSkinOwned(String skinId) => _ownedSkinIds.contains(skinId);
 
@@ -82,18 +85,62 @@ class MetaProvider with ChangeNotifier {
   bool get canClaimFreeGacha => _freeGachaAvailable;
 
   UpgradeSnapshot get upgradeSnapshot => UpgradeSnapshot(
-        inkRegenMultiplier: 1.0 + upgradeLevel(UpgradeType.inkRegen) * 0.12,
-        maxRevives: 1 + upgradeLevel(UpgradeType.revive),
-        coyoteBonusMs: upgradeLevel(UpgradeType.coyote) * 20.0,
-      );
+    inkRegenMultiplier: 1.0 + upgradeLevel(UpgradeType.inkRegen) * 0.12,
+    maxRevives: 1 + upgradeLevel(UpgradeType.revive),
+    coyoteBonusMs: upgradeLevel(UpgradeType.coyote) * 20.0,
+  );
 
-  List<UpgradeDefinition> get upgradeDefinitions => _upgradeDefinitions;
+  List<UpgradeDefinition> get upgradeDefinitions =>
+      List.unmodifiable(_upgradeDefinitions);
+
+  MetaProvider applyUpgradeConfig(MetaRemoteConfig config) {
+    final overrides = {
+      for (final override in config.upgradeOverrides) override.type: override,
+    };
+    final updated = _defaultUpgradeDefinitions
+        .map((definition) {
+          final override = overrides[definition.type];
+          if (override == null) {
+            return definition;
+          }
+          return definition.copyWith(
+            maxLevel: override.maxLevel ?? definition.maxLevel,
+            baseCost: override.baseCost ?? definition.baseCost,
+            costGrowth: override.costGrowth ?? definition.costGrowth,
+          );
+        })
+        .toList(growable: false);
+
+    if (_hasDifferentUpgradeDefinitions(updated)) {
+      _upgradeDefinitions = updated;
+      notifyListeners();
+    }
+    return this;
+  }
+
+  bool _hasDifferentUpgradeDefinitions(List<UpgradeDefinition> next) {
+    if (_upgradeDefinitions.length != next.length) {
+      return true;
+    }
+    for (var i = 0; i < next.length; i++) {
+      final current = _upgradeDefinitions[i];
+      final candidate = next[i];
+      if (current.type != candidate.type ||
+          current.maxLevel != candidate.maxLevel ||
+          current.baseCost != candidate.baseCost ||
+          current.costGrowth != candidate.costGrowth) {
+        return true;
+      }
+    }
+    return false;
+  }
 
   int upgradeLevel(UpgradeType type) => _upgradeLevels[type] ?? 0;
 
   int upgradeCost(UpgradeType type) {
-    final definition =
-        _upgradeDefinitions.firstWhere((element) => element.type == type);
+    final definition = _upgradeDefinitions.firstWhere(
+      (element) => element.type == type,
+    );
     final current = upgradeLevel(type);
     if (current >= definition.maxLevel) {
       return 0;
@@ -110,7 +157,10 @@ class MetaProvider with ChangeNotifier {
     if (_nextLoginClaimAt == null) {
       return LoginRewardState(streak: _loginStreak, nextClaim: DateTime.now());
     }
-    return LoginRewardState(streak: _loginStreak, nextClaim: _nextLoginClaimAt!);
+    return LoginRewardState(
+      streak: _loginStreak,
+      nextClaim: _nextLoginClaimAt!,
+    );
   }
 
   Future<void> addCoins(int amount) async {
@@ -158,8 +208,9 @@ class MetaProvider with ChangeNotifier {
 
   Future<bool> purchaseUpgrade(UpgradeType type) async {
     final current = upgradeLevel(type);
-    final definition =
-        _upgradeDefinitions.firstWhere((element) => element.type == type);
+    final definition = _upgradeDefinitions.firstWhere(
+      (element) => element.type == type,
+    );
     if (current >= definition.maxLevel) {
       return false;
     }
@@ -169,10 +220,7 @@ class MetaProvider with ChangeNotifier {
     }
     _totalCoins -= cost;
     _upgradeLevels[type] = current + 1;
-    await Future.wait([
-      _saveCoins(),
-      _saveUpgradeLevels(),
-    ]);
+    await Future.wait([_saveCoins(), _saveUpgradeLevels()]);
     notifyListeners();
     return true;
   }
@@ -207,10 +255,7 @@ class MetaProvider with ChangeNotifier {
     _loginStreak = streak;
     _lastLoginAt = DateTime.now();
     _nextLoginClaimAt = DateTime.now().add(const Duration(hours: 20));
-    await Future.wait([
-      addCoins(reward),
-      _saveLoginProgress(),
-    ]);
+    await Future.wait([addCoins(reward), _saveLoginProgress()]);
     return reward;
   }
 
@@ -230,8 +275,9 @@ class MetaProvider with ChangeNotifier {
         _skins.where((skin) => !_ownedSkinIds.contains(skin.id)).toList();
     List<PlayerSkin> selectionPool = List.of(unowned);
     if (useFreeRoll) {
-      selectionPool =
-          selectionPool.where((skin) => skin.cost < 300).toList(growable: false);
+      selectionPool = selectionPool
+          .where((skin) => skin.cost < 300)
+          .toList(growable: false);
       if (selectionPool.isEmpty) {
         selectionPool = List.of(unowned);
       }
@@ -388,9 +434,10 @@ class MetaProvider with ChangeNotifier {
     if (upgradeRaw != null) {
       final decoded = json.decode(upgradeRaw) as Map<String, dynamic>;
       decoded.forEach((key, value) {
-        final type = UpgradeType.values
-            .firstWhere((element) => describeEnum(element) == key,
-                orElse: () => UpgradeType.inkRegen);
+        final type = UpgradeType.values.firstWhere(
+          (element) => describeEnum(element) == key,
+          orElse: () => UpgradeType.inkRegen,
+        );
         _upgradeLevels[type] = value as int;
       });
     }
@@ -409,10 +456,12 @@ class MetaProvider with ChangeNotifier {
     final missionRaw = _prefs?.getString(_dailyMissionDataKey);
     if (missionRaw != null) {
       final list = json.decode(missionRaw) as List<dynamic>;
-      _dailyMissions = list
-          .map((item) =>
-              DailyMission.fromJson(item as Map<String, dynamic>))
-          .toList();
+      _dailyMissions =
+          list
+              .map(
+                (item) => DailyMission.fromJson(item as Map<String, dynamic>),
+              )
+              .toList();
     }
     final missionDateRaw = _prefs?.getString(_dailyMissionDateKey);
     if (missionDateRaw != null) {
@@ -465,10 +514,9 @@ class MetaProvider with ChangeNotifier {
   Future<void> _saveUpgradeLevels() async {
     final prefs = _prefs;
     if (prefs != null) {
-      final map = _upgradeLevels.map((key, value) => MapEntry(
-            describeEnum(key),
-            value,
-          ));
+      final map = _upgradeLevels.map(
+        (key, value) => MapEntry(describeEnum(key), value),
+      );
       await prefs.setString(_upgradeLevelsKey, json.encode(map));
     }
   }
@@ -582,15 +630,15 @@ class MetaProvider with ChangeNotifier {
   }
 }
 
-const List<UpgradeDefinition> _upgradeDefinitions = [
+final List<UpgradeDefinition> _defaultUpgradeDefinitions = [
   UpgradeDefinition(
     type: UpgradeType.inkRegen,
     maxLevel: 5,
     baseCost: 150,
     costGrowth: 120,
     displayName: 'Ink Injector',
-    descriptionBuilder: (level) =>
-        '+${(level * 12).toStringAsFixed(0)}% ink regen rate',
+    descriptionBuilder:
+        (level) => '+${(level * 12).toStringAsFixed(0)}% ink regen rate',
   ),
   UpgradeDefinition(
     type: UpgradeType.revive,

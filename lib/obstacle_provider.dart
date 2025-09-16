@@ -1,4 +1,3 @@
-
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
@@ -45,10 +44,7 @@ class ObstacleProvider with ChangeNotifier {
   List<Obstacle> get obstacles => _obstacles;
   double get speed => _speed;
 
-  void start({
-    required double screenWidth,
-    required bool tutorialMode,
-  }) {
+  void start({required double screenWidth, required bool tutorialMode}) {
     _screenWidth = screenWidth == 0 ? gameWidth : screenWidth;
     _active = true;
     _useIntroSequence = tutorialMode;
@@ -112,9 +108,10 @@ class ObstacleProvider with ChangeNotifier {
         tutorialMode && _tutorialElapsedMs < _tutorialSafetyWindowMs;
 
     if (!_useIntroSequence && !_restMode && _spawnCooldownMs <= 0) {
-      final pool = tutorialSafetyActive
-          ? _tutorialSafePatterns
-          : tutorialMode
+      final pool =
+          tutorialSafetyActive
+              ? _tutorialSafePatterns
+              : tutorialMode
               ? _easyPatterns
               : _standardPatterns;
       final pattern = pool[_random.nextInt(pool.length)];
@@ -172,9 +169,7 @@ class ObstacleProvider with ChangeNotifier {
     if (_obstacles.isEmpty) {
       return math.max(_screenWidth + 40, _playerX + _safeWindowPx);
     }
-    final furthest = _obstacles.reduce(
-      (a, b) => a.x > b.x ? a : b,
-    );
+    final furthest = _obstacles.reduce((a, b) => a.x > b.x ? a : b);
     final dynamicGap =
         (_baseMinSpawnGap + _speed * 6) / _densityMultiplier.clamp(0.4, 2.2);
     final safeStart = furthest.x + furthest.width + dynamicGap;
@@ -236,10 +231,7 @@ class ObstacleProvider with ChangeNotifier {
           y: _groundY,
         ),
       ),
-      _ScheduledPattern(
-        spawnTimeMs: 13200,
-        pattern: _ObstaclePattern.stair(),
-      ),
+      _ScheduledPattern(spawnTimeMs: 13200, pattern: _ObstaclePattern.stair()),
       _ScheduledPattern(
         spawnTimeMs: 18200,
         pattern: _ObstaclePattern.chain(
@@ -266,7 +258,11 @@ class ObstacleProvider with ChangeNotifier {
       ),
       _ScheduledPattern(
         spawnTimeMs: 31200,
-        pattern: _ObstaclePattern.single(width: 75, height: 55, y: _groundY - 10),
+        pattern: _ObstaclePattern.single(
+          width: 75,
+          height: 55,
+          y: _groundY - 10,
+        ),
       ),
     ];
   }
@@ -301,14 +297,16 @@ class _ObstaclePattern {
     required double height,
     required double y,
   }) {
-    return _ObstaclePattern(List.generate(count, (index) {
-      return _ObstacleTemplate(
-        offsetX: index * spacing,
-        width: width,
-        height: height,
-        y: y,
-      );
-    }));
+    return _ObstaclePattern(
+      List.generate(count, (index) {
+        return _ObstacleTemplate(
+          offsetX: index * spacing,
+          width: width,
+          height: height,
+          y: y,
+        );
+      }),
+    );
   }
 
   factory _ObstaclePattern.stair() {
@@ -347,8 +345,12 @@ class _ObstacleProviderPresets {
   static const double groundY = 360.0;
 }
 
-const List<_ObstaclePattern> _easyPatterns = [
-  _ObstaclePattern.single(width: 55, height: 40, y: _ObstacleProviderPresets.groundY),
+final List<_ObstaclePattern> _easyPatterns = [
+  _ObstaclePattern.single(
+    width: 55,
+    height: 40,
+    y: _ObstacleProviderPresets.groundY,
+  ),
   _ObstaclePattern.chain(
     count: 2,
     spacing: 160,
@@ -358,8 +360,12 @@ const List<_ObstaclePattern> _easyPatterns = [
   ),
 ];
 
-const List<_ObstaclePattern> _standardPatterns = [
-  _ObstaclePattern.single(width: 70, height: 60, y: _ObstacleProviderPresets.groundY),
+final List<_ObstaclePattern> _standardPatterns = [
+  _ObstaclePattern.single(
+    width: 70,
+    height: 60,
+    y: _ObstacleProviderPresets.groundY,
+  ),
   _ObstaclePattern.chain(
     count: 3,
     spacing: 120,
@@ -368,48 +374,48 @@ const List<_ObstaclePattern> _standardPatterns = [
     y: _ObstacleProviderPresets.groundY,
   ),
   _ObstaclePattern.stair(),
-  _ObstaclePattern(
-    [
-      _ObstacleTemplate(
-        offsetX: 0,
-        width: 50,
-        height: 40,
-        y: _ObstacleProviderPresets.groundY,
-      ),
-      _ObstacleTemplate(
-        offsetX: 160,
-        width: 60,
-        height: 90,
-        y: _ObstacleProviderPresets.groundY,
-      ),
-    ],
-  ),
-  _ObstaclePattern(
-    [
-      _ObstacleTemplate(
-        offsetX: 0,
-        width: 60,
-        height: 40,
-        y: _ObstacleProviderPresets.groundY,
-      ),
-      _ObstacleTemplate(
-        offsetX: 140,
-        width: 60,
-        height: 40,
-        y: _ObstacleProviderPresets.groundY,
-      ),
-      _ObstacleTemplate(
-        offsetX: 280,
-        width: 60,
-        height: 40,
-        y: _ObstacleProviderPresets.groundY,
-      ),
-    ],
-  ),
+  _ObstaclePattern([
+    _ObstacleTemplate(
+      offsetX: 0,
+      width: 50,
+      height: 40,
+      y: _ObstacleProviderPresets.groundY,
+    ),
+    _ObstacleTemplate(
+      offsetX: 160,
+      width: 60,
+      height: 90,
+      y: _ObstacleProviderPresets.groundY,
+    ),
+  ]),
+  _ObstaclePattern([
+    _ObstacleTemplate(
+      offsetX: 0,
+      width: 60,
+      height: 40,
+      y: _ObstacleProviderPresets.groundY,
+    ),
+    _ObstacleTemplate(
+      offsetX: 140,
+      width: 60,
+      height: 40,
+      y: _ObstacleProviderPresets.groundY,
+    ),
+    _ObstacleTemplate(
+      offsetX: 280,
+      width: 60,
+      height: 40,
+      y: _ObstacleProviderPresets.groundY,
+    ),
+  ]),
 ];
 
-const List<_ObstaclePattern> _tutorialSafePatterns = [
-  _ObstaclePattern.single(width: 55, height: 38, y: _ObstacleProviderPresets.groundY),
+final List<_ObstaclePattern> _tutorialSafePatterns = [
+  _ObstaclePattern.single(
+    width: 55,
+    height: 38,
+    y: _ObstacleProviderPresets.groundY,
+  ),
   _ObstaclePattern.chain(
     count: 2,
     spacing: 170,
@@ -417,6 +423,9 @@ const List<_ObstaclePattern> _tutorialSafePatterns = [
     height: 36,
     y: _ObstacleProviderPresets.groundY,
   ),
-  _ObstaclePattern.single(width: 60, height: 45, y: _ObstacleProviderPresets.groundY - 10),
+  _ObstaclePattern.single(
+    width: 60,
+    height: 45,
+    y: _ObstacleProviderPresets.groundY - 10,
+  ),
 ];
-}

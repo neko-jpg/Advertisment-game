@@ -1,9 +1,9 @@
-
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
+import 'constants/ad_constants.dart';
 import 'analytics_provider.dart';
 import 'game_models.dart';
 
@@ -22,22 +22,40 @@ class AdProvider with ChangeNotifier {
   final List<String> _interstitialCandidates = [];
   int _nextInterstitialIndex = 0;
   int _mediationAttempts = 0;
+  int _interstitialLoadAttempts = 0;
   int _rewardedLoadAttempts = 0;
 
   // Ad Unit IDs
-  final String _rewardAdUnitId = Platform.isAndroid
-      ? 'ca-app-pub-3940256099942544/5224354917' // Android Test Ad
-      : 'ca-app-pub-3940256099942544/1712485313'; // iOS Test Ad
+  static String get rewardedAdUnitId {
+    if (Platform.isAndroid) {
+      return AdUnitIds.rewardedAndroidTest;
+    }
+    if (Platform.isIOS) {
+      return AdUnitIds.rewardedIosTest;
+    }
+    return '';
+  }
 
-  final String _interstitialAdUnitId = Platform.isAndroid
-      ? 'ca-app-pub-3940256099942544/1033173712' // Android Test Ad
-      : 'ca-app-pub-3940256099942544/4411468910'; // iOS Test Ad
+  static String get interstitialAdUnitId {
+    if (Platform.isAndroid) {
+      return AdUnitIds.interstitialAndroidTest;
+    }
+    if (Platform.isIOS) {
+      return AdUnitIds.interstitialIosTest;
+    }
+    return '';
+  }
+
+  final String _rewardAdUnitId = rewardedAdUnitId;
+  final String _interstitialAdUnitId = interstitialAdUnitId;
 
   bool get isRewardedAdReady => _isRewardedAdReady;
 
-  AdProvider({required this.analytics}) {
-    loadRewardAd();
-    loadInterstitialAd();
+  AdProvider({required this.analytics, bool autoLoad = true}) {
+    if (autoLoad) {
+      loadRewardAd();
+      loadInterstitialAd();
+    }
   }
 
   final AnalyticsProvider analytics;
@@ -71,22 +89,34 @@ class AdProvider with ChangeNotifier {
 
   void loadInterstitialAd() {
     _mediationAttempts = 0;
+    _interstitialLoadAttempts = 0;
+    _requestInterstitialLoad();
+  }
+
+  void _requestInterstitialLoad() {
     InterstitialAd.load(
       adUnitId: _resolveInterstitialUnitId(),
       request: const AdRequest(),
       adLoadCallback: InterstitialAdLoadCallback(
         onAdLoaded: (ad) {
           _interstitialAd = ad;
+          _mediationAttempts = 0;
+          _interstitialLoadAttempts = 0;
         },
         onAdFailedToLoad: (error) {
           _interstitialAd = null;
           if (_interstitialCandidates.isNotEmpty) {
             _nextInterstitialIndex =
                 (_nextInterstitialIndex + 1) % _interstitialCandidates.length;
-            if (_mediationAttempts < _interstitialCandidates.length) {
+            if (_mediationAttempts + 1 <= _interstitialCandidates.length) {
               _mediationAttempts++;
-              loadInterstitialAd();
+              _requestInterstitialLoad();
+              return;
             }
+          }
+          if (_interstitialLoadAttempts < 3) {
+            _interstitialLoadAttempts++;
+            _requestInterstitialLoad();
           }
         },
       ),
@@ -123,14 +153,18 @@ class AdProvider with ChangeNotifier {
       },
     );
 
-    ad.show(onUserEarnedReward: (ad, reward) {
-      unawaited(analytics.logAdWatched(
-        placement: placement,
-        adType: 'rewarded',
-        rewardEarned: true,
-      ));
-      onReward();
-    });
+    ad.show(
+      onUserEarnedReward: (ad, reward) {
+        unawaited(
+          analytics.logAdWatched(
+            placement: placement,
+            adType: 'rewarded',
+            rewardEarned: true,
+          ),
+        );
+        onReward();
+      },
+    );
     _rewardedAd = null;
     _isRewardedAdReady = false;
     notifyListeners();
@@ -155,23 +189,28 @@ class AdProvider with ChangeNotifier {
         _runsCompleted < _config.minimumRunsBeforeInterstitial;
     final bool wasShortRun = lastRunDuration < _config.minimumRunDuration;
     final DateTime now = DateTime.now();
-    final bool elapsedSinceLastInterstitial = _lastInterstitialShownAt == null ||
+    final bool elapsedSinceLastInterstitial =
+        _lastInterstitialShownAt == null ||
         now.difference(_lastInterstitialShownAt!) >=
             _config.interstitialCooldown;
     final bool accumulatedTimeReached =
         _timeSinceLastInterstitial >= _config.interstitialCooldown;
 
-    if (!skipForFirstRuns && !wasShortRun &&
-        elapsedSinceLastInterstitial && accumulatedTimeReached &&
+    if (!skipForFirstRuns &&
+        !wasShortRun &&
+        elapsedSinceLastInterstitial &&
+        accumulatedTimeReached &&
         _interstitialAd != null) {
       _interstitialAd!.fullScreenContentCallback = FullScreenContentCallback(
         onAdShowedFullScreenContent: (ad) {
           onAdOpened?.call();
-          unawaited(analytics.logAdWatched(
-            placement: placement,
-            adType: 'interstitial',
-            rewardEarned: false,
-          ));
+          unawaited(
+            analytics.logAdWatched(
+              placement: placement,
+              adType: 'interstitial',
+              rewardEarned: false,
+            ),
+          );
         },
         onAdDismissedFullScreenContent: (ad) {
           ad.dispose();
@@ -198,6 +237,44 @@ class AdProvider with ChangeNotifier {
     }
   }
 
+  void showInterstitialAdDirect({
+    VoidCallback? onAdOpened,
+    VoidCallback? onAdClosed,
+    String placement = 'manual',
+  }) {
+    final ad = _interstitialAd;
+    if (ad == null) {
+      loadInterstitialAd();
+      onAdClosed?.call();
+      return;
+    }
+
+    ad.fullScreenContentCallback = FullScreenContentCallback(
+      onAdShowedFullScreenContent: (ad) {
+        onAdOpened?.call();
+        unawaited(
+          analytics.logAdWatched(
+            placement: placement,
+            adType: 'interstitial',
+            rewardEarned: false,
+          ),
+        );
+      },
+      onAdDismissedFullScreenContent: (ad) {
+        ad.dispose();
+        loadInterstitialAd();
+        onAdClosed?.call();
+      },
+      onAdFailedToShowFullScreenContent: (ad, error) {
+        ad.dispose();
+        loadInterstitialAd();
+        onAdClosed?.call();
+      },
+    );
+
+    ad.show();
+  }
+
   AdProvider applyRemoteConfig(AdRemoteConfig config) {
     _config = config;
     return this;
@@ -215,8 +292,8 @@ class AdProvider with ChangeNotifier {
     if (_interstitialCandidates.isEmpty) {
       return _interstitialAdUnitId;
     }
-    return _interstitialCandidates[
-        _nextInterstitialIndex % _interstitialCandidates.length];
+    return _interstitialCandidates[_nextInterstitialIndex %
+        _interstitialCandidates.length];
   }
 
   @override

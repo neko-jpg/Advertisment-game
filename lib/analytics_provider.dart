@@ -79,8 +79,14 @@ class AnalyticsProvider {
     if (analytics == null) {
       return;
     }
+    final filtered = <String, Object>{};
+    parameters.forEach((key, value) {
+      if (value != null) {
+        filtered[key] = value;
+      }
+    });
     try {
-      await analytics.logEvent(name: name, parameters: parameters);
+      await analytics.logEvent(name: name, parameters: filtered);
     } catch (error, stackTrace) {
       debugPrint('Failed to log analytics event "$name": $error');
       debugPrintStack(stackTrace: stackTrace);
