@@ -1,4 +1,5 @@
 
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -6,6 +7,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
 import 'ad_provider.dart';
+import 'analytics_provider.dart';
 import 'coin_provider.dart';
 import 'game_models.dart';
 import 'line_provider.dart';
@@ -73,6 +75,7 @@ class GameProvider with ChangeNotifier {
       const UpgradeSnapshot(inkRegenMultiplier: 1, maxRevives: 1, coyoteBonusMs: 0);
 
   // Providers
+  final AnalyticsProvider analytics;
   AdProvider adProvider;
   LineProvider lineProvider;
   ObstacleProvider obstacleProvider;
@@ -81,6 +84,7 @@ class GameProvider with ChangeNotifier {
   SoundProvider soundProvider;
 
   GameProvider({
+    required this.analytics,
     required this.adProvider,
     required this.lineProvider,
     required this.obstacleProvider,
@@ -183,6 +187,16 @@ class GameProvider with ChangeNotifier {
     soundProvider.startBgm();
 
     adProvider.loadInterstitialAd();
+
+    unawaited(
+      analytics.logGameStart(
+        tutorialActive: isTutorialActive,
+        revivesUnlocked: _activeUpgrades.maxRevives,
+        inkMultiplier: _activeUpgrades.inkRegenMultiplier,
+        totalCoins: metaProvider.totalCoins,
+        missionsAvailable: metaProvider.hasDailyMissions,
+      ),
+    );
 
     _ticker!.start();
 
@@ -458,10 +472,16 @@ class GameProvider with ChangeNotifier {
       return;
     }
     final stats = _buildRunStats();
+    final completedBefore = metaProvider.dailyMissions
+        .where((mission) => mission.completed)
+        .length;
     if (stats.coins > 0) {
       await metaProvider.addCoins(stats.coins);
     }
     metaProvider.applyRunStats(stats);
+    final completedAfter = metaProvider.dailyMissions
+        .where((mission) => mission.completed)
+        .length;
     _recentRuns.insert(0, stats);
     if (_recentRuns.length > 5) {
       _recentRuns.removeLast();
@@ -476,6 +496,26 @@ class GameProvider with ChangeNotifier {
       _accidentStreak = 0;
     }
     adProvider.registerRunEnd(_lastRunDuration);
+    final missionsCompletedDelta =
+        math.max(0, completedAfter - completedBefore);
+    final totalCoinsAfterRun = metaProvider.totalCoins;
+    if (stats.coins > 0) {
+      unawaited(
+        analytics.logCoinsCollected(
+          amount: stats.coins,
+          totalCoins: totalCoinsAfterRun,
+          source: 'run',
+        ),
+      );
+    }
+    unawaited(
+      analytics.logGameEnd(
+        stats: stats,
+        revivesUsed: _revivesUsedThisRun,
+        totalCoins: totalCoinsAfterRun,
+        missionsCompletedDelta: missionsCompletedDelta,
+      ),
+    );
     _hasBankedRewards = true;
   }
 

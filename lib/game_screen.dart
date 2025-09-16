@@ -523,6 +523,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
     }
     final sound = context.read<SoundProvider>();
     adProvider.showRewardAd(
+      placement: 'gacha',
       onReward: () {
         meta.pullGacha(viaAd: true).then((result) {
           if (!mounted) return;
@@ -724,6 +725,8 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                                   skin: metaProvider.selectedSkin,
                                   isRestWindow: game.isRestWindow,
                                   colorBlindFriendly: metaProvider.colorBlindMode,
+                                  elapsedMs: game.elapsedRunMs,
+                                  scrollSpeed: obstacleProvider.speed,
                                 ),
                               );
                             },
@@ -1079,6 +1082,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                         onPressed: () {
                           final sound = context.read<SoundProvider>();
                           adProvider.showRewardAd(
+                            placement: 'revive',
                             onReward: () {
                               game.revivePlayer();
                             },

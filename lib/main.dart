@@ -1,26 +1,43 @@
 
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:provider/provider.dart';
-import 'game_provider.dart';
-import 'obstacle_provider.dart';
-import 'line_provider.dart';
+
 import 'ad_provider.dart';
+import 'analytics_provider.dart';
 import 'coin_provider.dart';
-import 'sound_provider.dart';
+import 'game_provider.dart';
 import 'game_screen.dart';
+import 'line_provider.dart';
 import 'meta_provider.dart';
+import 'obstacle_provider.dart';
+import 'sound_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  AnalyticsProvider analytics;
+  try {
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp();
+    }
+    analytics = AnalyticsProvider();
+  } catch (error, stackTrace) {
+    debugPrint('Firebase initialization failed: $error');
+    debugPrintStack(stackTrace: stackTrace);
+    analytics = AnalyticsProvider.fake();
+  }
   await MobileAds.instance.initialize();
 
-  runApp(const QuickDrawDashApp());
+  runApp(QuickDrawDashApp(analytics: analytics));
 }
 
 class QuickDrawDashApp extends StatelessWidget {
-  const QuickDrawDashApp({super.key});
+  const QuickDrawDashApp({super.key, required this.analytics});
+
+  final AnalyticsProvider analytics;
 
   @override
   Widget build(BuildContext context) {
@@ -46,19 +63,22 @@ class QuickDrawDashApp extends StatelessWidget {
       ),
     );
 
-    return MaterialApp(
-      title: 'Quick Draw Dash',
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF38BDF8),
-          brightness: Brightness.dark,
+    return Provider<AnalyticsProvider>.value(
+      value: analytics,
+      child: MaterialApp(
+        title: 'Quick Draw Dash',
+        theme: ThemeData(
+          useMaterial3: true,
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: const Color(0xFF38BDF8),
+            brightness: Brightness.dark,
+          ),
+          scaffoldBackgroundColor: const Color(0xFF020617),
+          textTheme: textTheme,
         ),
-        scaffoldBackgroundColor: const Color(0xFF020617),
-        textTheme: textTheme,
+        home: const GameScreenWrapper(), // Use a wrapper to provide the providers
+        debugShowCheckedModeBanner: false,
       ),
-      home: const GameScreenWrapper(), // Use a wrapper to provide the providers
-      debugShowCheckedModeBanner: false,
     );
   }
 }
@@ -78,12 +98,16 @@ class _GameScreenWrapperState extends State<GameScreenWrapper> with TickerProvid
       providers: [
         Provider(create: (_) => SoundProvider()), // Add SoundProvider
         ChangeNotifierProvider(create: (_) => MetaProvider()),
-        ChangeNotifierProvider(create: (_) => AdProvider()),
+        ChangeNotifierProvider(
+          create: (context) =>
+              AdProvider(analytics: context.read<AnalyticsProvider>()),
+        ),
         ChangeNotifierProvider(create: (_) => LineProvider()),
         ChangeNotifierProvider(create: (_) => ObstacleProvider(gameWidth: gameWidth)),
         ChangeNotifierProvider(create: (_) => CoinProvider()),
         ChangeNotifierProxyProvider5<AdProvider, LineProvider, ObstacleProvider, CoinProvider, MetaProvider, GameProvider>(
           create: (context) => GameProvider(
+            analytics: context.read<AnalyticsProvider>(),
             adProvider: context.read<AdProvider>(),
             lineProvider: context.read<LineProvider>(),
             obstacleProvider: context.read<ObstacleProvider>(),
