@@ -82,8 +82,10 @@ class ObstacleProvider with ChangeNotifier {
     _spawnCooldownMs -= deltaMs;
     _restMode = restWindow;
 
+    final double dt = deltaMs / 16.0;
+    final double displacement = _speed * dt;
     for (final obstacle in _obstacles) {
-      obstacle.x -= _speed;
+      obstacle.x -= displacement;
     }
     _obstacles.removeWhere((obstacle) => obstacle.x + obstacle.width < -50);
 

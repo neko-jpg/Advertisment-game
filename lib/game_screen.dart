@@ -1,4 +1,5 @@
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -11,12 +12,23 @@ import 'obstacle_provider.dart';
 import 'meta_provider.dart';
 import 'player_skin.dart';
 import 'game_models.dart';
+import 'sound_provider.dart';
 
 class GameScreen extends StatefulWidget {
   const GameScreen({super.key});
 
   @override
   State<GameScreen> createState() => _GameScreenState();
+}
+
+class _InkUiState {
+  const _InkUiState({
+    required this.canStartNewLine,
+    required this.inkProgress,
+  });
+
+  final bool canStartNewLine;
+  final double inkProgress;
 }
 
 class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
@@ -509,15 +521,24 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
       _showSnackMessage(context, 'Ad not ready yet.');
       return;
     }
-    adProvider.showRewardAd(onReward: () {
-      meta.pullGacha(viaAd: true).then((result) {
-        if (!mounted) return;
-        _showSnackMessage(
-          context,
-          'Unlocked ${result.displayName}${result.wasGuaranteed ? ' (guaranteed!)' : ''}',
-        );
-      });
-    });
+    final sound = context.read<SoundProvider>();
+    adProvider.showRewardAd(
+      onReward: () {
+        meta.pullGacha(viaAd: true).then((result) {
+          if (!mounted) return;
+          _showSnackMessage(
+            context,
+            'Unlocked ${result.displayName}${result.wasGuaranteed ? ' (guaranteed!)' : ''}',
+          );
+        });
+      },
+      onAdOpened: () {
+        sound.pauseBgmForInterruption();
+      },
+      onAdClosed: () {
+        sound.resumeBgmAfterInterruption();
+      },
+    );
   }
 
   Future<void> _triggerCoinGacha(
@@ -616,8 +637,16 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
-        child: Consumer5<GameProvider, LineProvider, ObstacleProvider, CoinProvider, MetaProvider>(
-          builder: (context, game, lineProvider, obstacleProvider, coinProvider, metaProvider, child) {
+        child: Consumer2<GameProvider, MetaProvider>(
+          builder: (context, game, metaProvider, child) {
+            final lineProvider = context.read<LineProvider>();
+            final obstacleProvider = context.read<ObstacleProvider>();
+            final coinProvider = context.read<CoinProvider>();
+            final combinedListenable = Listenable.merge([
+              lineProvider,
+              obstacleProvider,
+              coinProvider,
+            ]);
             return LayoutBuilder(
               builder: (context, constraints) {
                 final size = Size(constraints.maxWidth, constraints.maxHeight);
@@ -682,20 +711,27 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                   child: Stack(
                     children: [
                       Positioned.fill(
-                        child: CustomPaint(
-                          painter: DrawingPainter(
-                            playerPosition: Offset(game.playerX, game.playerY),
-                            lines: lineProvider.lines,
-                            obstacles: obstacleProvider.obstacles,
-                            coins: coinProvider.coins,
-                            skin: metaProvider.selectedSkin,
-                            isRestWindow: game.isRestWindow,
-                            colorBlindFriendly: metaProvider.colorBlindMode,
+                        child: RepaintBoundary(
+                          child: AnimatedBuilder(
+                            animation: combinedListenable,
+                            builder: (context, _) {
+                              return CustomPaint(
+                                painter: DrawingPainter(
+                                  playerPosition: Offset(game.playerX, game.playerY),
+                                  lines: lineProvider.lines,
+                                  obstacles: obstacleProvider.obstacles,
+                                  coins: coinProvider.coins,
+                                  skin: metaProvider.selectedSkin,
+                                  isRestWindow: game.isRestWindow,
+                                  colorBlindFriendly: metaProvider.colorBlindMode,
+                                ),
+                              );
+                            },
                           ),
                         ),
                       ),
                       _buildTutorialOverlay(context, game, metaProvider),
-                      _buildGameUI(context, game, lineProvider, metaProvider),
+                      _buildGameUI(context, game, metaProvider),
                     ],
                   ),
                 );
@@ -710,14 +746,13 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   Widget _buildGameUI(
     BuildContext context,
     GameProvider game,
-    LineProvider lineProvider,
     MetaProvider meta,
   ) {
     switch (game.gameState) {
       case GameState.ready:
         return _buildReadyUI(context, meta);
       case GameState.running:
-        return _buildRunningUI(context, game, lineProvider, meta);
+        return _buildRunningUI(context, game, meta);
       case GameState.dead:
         return _buildGameOverUI(context, game, meta);
       case GameState.result:
@@ -808,7 +843,6 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   Widget _buildRunningUI(
     BuildContext context,
     GameProvider game,
-    LineProvider lineProvider,
     MetaProvider meta,
   ) {
     final textTheme = Theme.of(context).textTheme;
@@ -848,44 +882,52 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
             ),
           ),
           const SizedBox(height: 12),
-          Container(
-            width: 240,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.24),
-              borderRadius: BorderRadius.circular(18),
+          Selector<LineProvider, _InkUiState>(
+            selector: (_, line) => _InkUiState(
+              canStartNewLine: line.canStartNewLine,
+              inkProgress: line.inkProgress,
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  lineProvider.canStartNewLine ? 'Ink ready' : 'Ink recharging',
-                  style: textTheme.bodyLarge?.copyWith(color: Colors.white),
+            builder: (context, inkState, _) {
+              return Container(
+                width: 240,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.24),
+                  borderRadius: BorderRadius.circular(18),
                 ),
-                const SizedBox(height: 8),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: LinearProgressIndicator(
-                    value: lineProvider.inkProgress,
-                    minHeight: 8,
-                    backgroundColor: Colors.white.withOpacity(0.2),
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      lineProvider.canStartNewLine
-                          ? const Color(0xFF22C55E)
-                          : const Color(0xFFF97316),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      inkState.canStartNewLine ? 'Ink ready' : 'Ink recharging',
+                      style: textTheme.bodyLarge?.copyWith(color: Colors.white),
                     ),
-                  ),
+                    const SizedBox(height: 8),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: LinearProgressIndicator(
+                        value: inkState.inkProgress,
+                        minHeight: 8,
+                        backgroundColor: Colors.white.withOpacity(0.2),
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          inkState.canStartNewLine
+                              ? const Color(0xFF22C55E)
+                              : const Color(0xFFF97316),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${(inkState.inkProgress * 100).clamp(0, 100).round()}% charge',
+                      style: textTheme.bodySmall?.copyWith(
+                        color: Colors.white70,
+                        letterSpacing: 1.1,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  '${(lineProvider.inkProgress * 100).clamp(0, 100).round()}% charge',
-                  style: textTheme.bodySmall?.copyWith(
-                    color: Colors.white70,
-                    letterSpacing: 1.1,
-                  ),
-                ),
-              ],
-            ),
+              );
+            },
           ),
           if (game.isRestWindow) ...[
             const SizedBox(height: 12),
@@ -1006,11 +1048,18 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                     ElevatedButton.icon(
                       onPressed: () async {
                         await game.finalizeRun(metaProvider: meta);
+                        final sound = context.read<SoundProvider>();
                         adProvider.maybeShowInterstitial(
                           lastRunDuration: game.lastRunDuration,
                           onClosed: () {
                             game.resetGame();
                             game.startGame();
+                          },
+                          onAdOpened: () {
+                            sound.pauseBgmForInterruption();
+                          },
+                          onAdClosed: () {
+                            sound.resumeBgmAfterInterruption();
                           },
                         );
                       },
@@ -1028,9 +1077,18 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                     if (canRevive && adProvider.isRewardedAdReady)
                       ElevatedButton.icon(
                         onPressed: () {
-                          adProvider.showRewardAd(onReward: () {
-                            game.revivePlayer();
-                          });
+                          final sound = context.read<SoundProvider>();
+                          adProvider.showRewardAd(
+                            onReward: () {
+                              game.revivePlayer();
+                            },
+                            onAdOpened: () {
+                              sound.pauseBgmForInterruption();
+                            },
+                            onAdClosed: () {
+                              sound.resumeBgmAfterInterruption();
+                            },
+                          );
                         },
                         icon: const Icon(Icons.favorite_rounded),
                         label: const Text('REVIVE'),
