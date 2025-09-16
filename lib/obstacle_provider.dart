@@ -21,7 +21,7 @@ class ObstacleProvider with ChangeNotifier {
   ObstacleProvider({required this.gameWidth});
 
   static const double _groundY = 360.0;
-  static const double _minSpawnGap = 150.0;
+  static const double _baseMinSpawnGap = 150.0;
 
   final List<Obstacle> _obstacles = [];
   final double gameWidth;
@@ -31,14 +31,22 @@ class ObstacleProvider with ChangeNotifier {
   double _spawnCooldownMs = 1200;
   double _timeSinceStartMs = 0;
   double _screenWidth = 0;
+  double _playerX = 0;
   bool _active = false;
   bool _useIntroSequence = false;
+  bool _restMode = false;
+  double _densityMultiplier = 1.0;
+  double _safeWindowPx = 180.0;
+  double _pendingStartGraceMs = 0.0;
   final List<_ScheduledPattern> _introQueue = [];
 
   List<Obstacle> get obstacles => _obstacles;
   double get speed => _speed;
 
-  void start({required double screenWidth, required bool tutorialMode}) {
+  void start({
+    required double screenWidth,
+    required bool tutorialMode,
+  }) {
     _screenWidth = screenWidth == 0 ? gameWidth : screenWidth;
     _active = true;
     _useIntroSequence = tutorialMode;
@@ -47,6 +55,10 @@ class ObstacleProvider with ChangeNotifier {
     _introQueue
       ..clear()
       ..addAll(_buildIntroSequence());
+    if (_pendingStartGraceMs > 0) {
+      _spawnCooldownMs += _pendingStartGraceMs;
+      _pendingStartGraceMs = 0;
+    }
   }
 
   void stopSpawning() {
@@ -57,14 +69,18 @@ class ObstacleProvider with ChangeNotifier {
     required double deltaMs,
     required double screenWidth,
     required bool tutorialMode,
+    required double playerX,
+    required bool restWindow,
   }) {
     if (!_active) {
       return;
     }
 
     _screenWidth = screenWidth == 0 ? _screenWidth : screenWidth;
+    _playerX = playerX;
     _timeSinceStartMs += deltaMs;
     _spawnCooldownMs -= deltaMs;
+    _restMode = restWindow;
 
     for (final obstacle in _obstacles) {
       obstacle.x -= _speed;
@@ -82,12 +98,14 @@ class ObstacleProvider with ChangeNotifier {
       }
     }
 
-    if (!_useIntroSequence && _spawnCooldownMs <= 0) {
+    if (!_useIntroSequence && !_restMode && _spawnCooldownMs <= 0) {
       final pattern = tutorialMode
           ? _easyPatterns[_random.nextInt(_easyPatterns.length)]
           : _standardPatterns[_random.nextInt(_standardPatterns.length)];
       _spawnPattern(pattern);
       _spawnCooldownMs = _spawnDelay();
+    } else if (_restMode) {
+      _spawnCooldownMs = math.max(_spawnCooldownMs, 400);
     }
 
     notifyListeners();
@@ -105,12 +123,17 @@ class ObstacleProvider with ChangeNotifier {
     _spawnCooldownMs = 1200;
     _timeSinceStartMs = 0;
     _introQueue.clear();
+    _densityMultiplier = 1.0;
+    _safeWindowPx = 180.0;
+    _pendingStartGraceMs = 0.0;
+    _restMode = false;
     notifyListeners();
   }
 
   double _spawnDelay() {
-    final minDelay = 850.0;
-    final maxDelay = 1400.0;
+    final density = _densityMultiplier.clamp(0.4, 2.2);
+    final minDelay = 850.0 / density;
+    final maxDelay = 1400.0 / density;
     return minDelay + _random.nextDouble() * (maxDelay - minDelay);
   }
 
@@ -130,13 +153,32 @@ class ObstacleProvider with ChangeNotifier {
 
   double _computeSpawnBaseX() {
     if (_obstacles.isEmpty) {
-      return _screenWidth + 40;
+      return math.max(_screenWidth + 40, _playerX + _safeWindowPx);
     }
     final furthest = _obstacles.reduce(
       (a, b) => a.x > b.x ? a : b,
     );
-    final safeStart = furthest.x + furthest.width + _minSpawnGap;
-    return math.max(_screenWidth + 40, safeStart);
+    final dynamicGap =
+        (_baseMinSpawnGap + _speed * 6) / _densityMultiplier.clamp(0.4, 2.2);
+    final safeStart = furthest.x + furthest.width + dynamicGap;
+    final playerSafe = _playerX + _safeWindowPx;
+    return math.max(_screenWidth + 40, math.max(safeStart, playerSafe));
+  }
+
+  void configureDifficulty({
+    required double speedMultiplier,
+    required double densityMultiplier,
+    required double safeWindow,
+    required Duration startGrace,
+  }) {
+    _densityMultiplier = densityMultiplier;
+    _safeWindowPx = safeWindow;
+    _speed = 5.0 * speedMultiplier.clamp(0.6, 2.0);
+    _pendingStartGraceMs = startGrace.inMilliseconds.toDouble();
+  }
+
+  void setRestMode(bool enabled) {
+    _restMode = enabled;
   }
 
   List<_ScheduledPattern> _buildIntroSequence() {
