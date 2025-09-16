@@ -386,6 +386,7 @@ class GameProvider with ChangeNotifier {
       return;
     }
 
+    const maxDeltaMs = 1000.0 / 30.0;
     final now = DateTime.now();
     final double deltaMs;
     if (_lastFrameTimestamp == null) {
@@ -393,7 +394,7 @@ class GameProvider with ChangeNotifier {
     } else {
       final elapsedMs =
           now.difference(_lastFrameTimestamp!).inMilliseconds.toDouble();
-      deltaMs = math.min(200.0, math.max(0.0, elapsedMs));
+      deltaMs = math.min(maxDeltaMs, math.max(0.0, elapsedMs));
     }
     _lastFrameTimestamp = now;
     final double dt = deltaMs / 16.0;
