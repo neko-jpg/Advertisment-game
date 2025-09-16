@@ -7,11 +7,16 @@
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:myapp/analytics_provider.dart';
 import 'package:myapp/main.dart';
 
 void main() {
   testWidgets('renders the Quick Draw Dash start screen', (tester) async {
-    await tester.pumpWidget(const QuickDrawDashApp());
+    await tester.pumpWidget(
+      QuickDrawDashApp(
+        analytics: AnalyticsProvider.fake(),
+      ),
+    );
 
     expect(find.text('Quick Draw Dash'), findsOneWidget);
     expect(find.text('START RUN'), findsOneWidget);

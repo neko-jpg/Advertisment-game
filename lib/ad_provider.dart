@@ -1,8 +1,10 @@
 
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
+import 'analytics_provider.dart';
 import 'game_models.dart';
 
 class AdProvider with ChangeNotifier {
@@ -32,10 +34,12 @@ class AdProvider with ChangeNotifier {
 
   bool get isRewardedAdReady => _isRewardedAdReady;
 
-  AdProvider() {
+  AdProvider({required this.analytics}) {
     loadRewardAd();
     loadInterstitialAd();
   }
+
+  final AnalyticsProvider analytics;
 
   void loadRewardAd() {
     RewardedAd.load(
@@ -80,6 +84,7 @@ class AdProvider with ChangeNotifier {
   }
 
   void showRewardAd({
+    required String placement,
     required VoidCallback onReward,
     VoidCallback? onAdOpened,
     VoidCallback? onAdClosed,
@@ -106,6 +111,11 @@ class AdProvider with ChangeNotifier {
     );
 
     ad.show(onUserEarnedReward: (ad, reward) {
+      unawaited(analytics.logAdWatched(
+        placement: placement,
+        adType: 'rewarded',
+        rewardEarned: true,
+      ));
       onReward();
     });
     _rewardedAd = null;
@@ -126,6 +136,7 @@ class AdProvider with ChangeNotifier {
     required VoidCallback onClosed,
     VoidCallback? onAdOpened,
     VoidCallback? onAdClosed,
+    String placement = 'run_end',
   }) {
     final bool skipForFirstRuns =
         _runsCompleted < _config.minimumRunsBeforeInterstitial;
@@ -143,6 +154,11 @@ class AdProvider with ChangeNotifier {
       _interstitialAd!.fullScreenContentCallback = FullScreenContentCallback(
         onAdShowedFullScreenContent: (ad) {
           onAdOpened?.call();
+          unawaited(analytics.logAdWatched(
+            placement: placement,
+            adType: 'interstitial',
+            rewardEarned: false,
+          ));
         },
         onAdDismissedFullScreenContent: (ad) {
           ad.dispose();
