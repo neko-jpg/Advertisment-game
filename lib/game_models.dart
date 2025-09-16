@@ -157,3 +157,86 @@ class UpgradeSnapshot {
   final int maxRevives;
   final double coyoteBonusMs;
 }
+
+class DifficultyRemoteConfig {
+  const DifficultyRemoteConfig({
+    required this.baseSpeedMultiplier,
+    required this.speedRampIntervalScore,
+    required this.speedRampIncrease,
+    required this.maxSpeedMultiplier,
+    required this.targetSessionSeconds,
+    required this.tutorialSafeWindowMs,
+    required this.emergencyInkFloor,
+  });
+
+  final double baseSpeedMultiplier;
+  final int speedRampIntervalScore;
+  final double speedRampIncrease;
+  final double maxSpeedMultiplier;
+  final int targetSessionSeconds;
+  final int tutorialSafeWindowMs;
+  final double emergencyInkFloor;
+
+  Map<String, dynamic> toJson() {
+    return {
+      'baseSpeedMultiplier': baseSpeedMultiplier,
+      'speedRampIntervalScore': speedRampIntervalScore,
+      'speedRampIncrease': speedRampIncrease,
+      'maxSpeedMultiplier': maxSpeedMultiplier,
+      'targetSessionSeconds': targetSessionSeconds,
+      'tutorialSafeWindowMs': tutorialSafeWindowMs,
+      'emergencyInkFloor': emergencyInkFloor,
+    };
+  }
+
+  static DifficultyRemoteConfig fromJson(String source) {
+    if (source.isEmpty) {
+      return const DifficultyRemoteConfig(
+        baseSpeedMultiplier: 1.0,
+        speedRampIntervalScore: 380,
+        speedRampIncrease: 0.35,
+        maxSpeedMultiplier: 2.2,
+        targetSessionSeconds: 50,
+        tutorialSafeWindowMs: 30000,
+        emergencyInkFloor: 14,
+      );
+    }
+    final map = json.decode(source) as Map<String, dynamic>;
+    return DifficultyRemoteConfig(
+      baseSpeedMultiplier:
+          (map['baseSpeedMultiplier'] as num?)?.toDouble() ?? 1.0,
+      speedRampIntervalScore: map['speedRampIntervalScore'] as int? ?? 380,
+      speedRampIncrease: (map['speedRampIncrease'] as num?)?.toDouble() ?? 0.35,
+      maxSpeedMultiplier: (map['maxSpeedMultiplier'] as num?)?.toDouble() ?? 2.2,
+      targetSessionSeconds: map['targetSessionSeconds'] as int? ?? 50,
+      tutorialSafeWindowMs: map['tutorialSafeWindowMs'] as int? ?? 30000,
+      emergencyInkFloor: (map['emergencyInkFloor'] as num?)?.toDouble() ?? 14,
+    );
+  }
+}
+
+class GameToast {
+  const GameToast({
+    required this.message,
+    required this.icon,
+    required this.color,
+    this.duration = const Duration(seconds: 2),
+  });
+
+  final String message;
+  final IconData icon;
+  final Color color;
+  final Duration duration;
+}
+
+class RunBoost {
+  const RunBoost({
+    required this.coinMultiplier,
+    required this.inkRegenMultiplier,
+    required this.duration,
+  });
+
+  final double coinMultiplier;
+  final double inkRegenMultiplier;
+  final Duration duration;
+}

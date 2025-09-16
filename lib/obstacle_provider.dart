@@ -39,6 +39,8 @@ class ObstacleProvider with ChangeNotifier {
   double _safeWindowPx = 180.0;
   double _pendingStartGraceMs = 0.0;
   final List<_ScheduledPattern> _introQueue = [];
+  double _tutorialSafetyWindowMs = 0.0;
+  double _tutorialElapsedMs = 0.0;
 
   List<Obstacle> get obstacles => _obstacles;
   double get speed => _speed;
@@ -55,6 +57,7 @@ class ObstacleProvider with ChangeNotifier {
     _introQueue
       ..clear()
       ..addAll(_buildIntroSequence());
+    _tutorialElapsedMs = 0.0;
     if (_pendingStartGraceMs > 0) {
       _spawnCooldownMs += _pendingStartGraceMs;
       _pendingStartGraceMs = 0;
@@ -79,6 +82,9 @@ class ObstacleProvider with ChangeNotifier {
     _screenWidth = screenWidth == 0 ? _screenWidth : screenWidth;
     _playerX = playerX;
     _timeSinceStartMs += deltaMs;
+    if (tutorialMode) {
+      _tutorialElapsedMs += deltaMs;
+    }
     _spawnCooldownMs -= deltaMs;
     _restMode = restWindow;
 
@@ -94,16 +100,24 @@ class ObstacleProvider with ChangeNotifier {
           _timeSinceStartMs >= _introQueue.first.spawnTimeMs) {
         _spawnPattern(_introQueue.removeAt(0).pattern);
       }
-      if (_introQueue.isEmpty || _timeSinceStartMs > 28000) {
+      if (_introQueue.isEmpty ||
+          (_tutorialSafetyWindowMs > 0 &&
+              _tutorialElapsedMs >= _tutorialSafetyWindowMs)) {
         _useIntroSequence = false;
         _spawnCooldownMs = 900;
       }
     }
 
+    final bool tutorialSafetyActive =
+        tutorialMode && _tutorialElapsedMs < _tutorialSafetyWindowMs;
+
     if (!_useIntroSequence && !_restMode && _spawnCooldownMs <= 0) {
-      final pattern = tutorialMode
-          ? _easyPatterns[_random.nextInt(_easyPatterns.length)]
-          : _standardPatterns[_random.nextInt(_standardPatterns.length)];
+      final pool = tutorialSafetyActive
+          ? _tutorialSafePatterns
+          : tutorialMode
+              ? _easyPatterns
+              : _standardPatterns;
+      final pattern = pool[_random.nextInt(pool.length)];
       _spawnPattern(pattern);
       _spawnCooldownMs = _spawnDelay();
     } else if (_restMode) {
@@ -129,6 +143,7 @@ class ObstacleProvider with ChangeNotifier {
     _safeWindowPx = 180.0;
     _pendingStartGraceMs = 0.0;
     _restMode = false;
+    _tutorialElapsedMs = 0.0;
     notifyListeners();
   }
 
@@ -183,6 +198,14 @@ class ObstacleProvider with ChangeNotifier {
     _restMode = enabled;
   }
 
+  void configureTutorialWindow({required double durationMs}) {
+    _tutorialSafetyWindowMs = durationMs;
+  }
+
+  void setSpeedMultiplier(double multiplier) {
+    _speed = 5.0 * multiplier.clamp(0.4, 3.0);
+  }
+
   List<_ScheduledPattern> _buildIntroSequence() {
     return [
       _ScheduledPattern(
@@ -219,11 +242,31 @@ class ObstacleProvider with ChangeNotifier {
       ),
       _ScheduledPattern(
         spawnTimeMs: 18200,
-        pattern: _ObstaclePattern.gap(),
+        pattern: _ObstaclePattern.chain(
+          count: 3,
+          spacing: 150,
+          width: 45,
+          height: 38,
+          y: _groundY,
+        ),
       ),
       _ScheduledPattern(
         spawnTimeMs: 23200,
         pattern: _ObstaclePattern.single(width: 90, height: 70, y: _groundY),
+      ),
+      _ScheduledPattern(
+        spawnTimeMs: 27200,
+        pattern: _ObstaclePattern.chain(
+          count: 2,
+          spacing: 160,
+          width: 50,
+          height: 42,
+          y: _groundY,
+        ),
+      ),
+      _ScheduledPattern(
+        spawnTimeMs: 31200,
+        pattern: _ObstaclePattern.single(width: 75, height: 55, y: _groundY - 10),
       ),
     ];
   }
@@ -313,7 +356,6 @@ const List<_ObstaclePattern> _easyPatterns = [
     height: 38,
     y: _ObstacleProviderPresets.groundY,
   ),
-  _ObstaclePattern.gap(),
 ];
 
 const List<_ObstaclePattern> _standardPatterns = [
@@ -364,5 +406,17 @@ const List<_ObstaclePattern> _standardPatterns = [
       ),
     ],
   ),
+];
+
+const List<_ObstaclePattern> _tutorialSafePatterns = [
+  _ObstaclePattern.single(width: 55, height: 38, y: _ObstacleProviderPresets.groundY),
+  _ObstaclePattern.chain(
+    count: 2,
+    spacing: 170,
+    width: 45,
+    height: 36,
+    y: _ObstacleProviderPresets.groundY,
+  ),
+  _ObstaclePattern.single(width: 60, height: 45, y: _ObstacleProviderPresets.groundY - 10),
 ];
 }

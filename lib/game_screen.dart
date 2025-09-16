@@ -34,6 +34,7 @@ class _InkUiState {
 class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   late final GameProvider _gameProvider;
   bool _isDrawingGestureActive = false;
+  bool _isOneTapDrawing = false;
   late final AnimationController _ghostHandController;
   late final Animation<double> _ghostHandAnimation;
 
@@ -494,19 +495,32 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                       const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
                 ),
               ),
-              OutlinedButton.icon(
-                onPressed: meta.totalCoins >= 120
-                    ? () => _triggerCoinGacha(context, meta)
-                    : null,
-                icon: const Icon(Icons.monetization_on_rounded),
-                label: const Text('Spend 120 coins'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.white,
-                  side: BorderSide(color: Colors.white.withOpacity(0.35)),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+              if (meta.canClaimFreeGacha)
+                ElevatedButton.icon(
+                  onPressed: () => _triggerFreeGacha(context, meta),
+                  icon: const Icon(Icons.card_giftcard_rounded),
+                  label: const Text('First roll free'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF22C55E),
+                    foregroundColor: Colors.white,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                  ),
+                )
+              else
+                OutlinedButton.icon(
+                  onPressed: meta.totalCoins >= 120
+                      ? () => _triggerCoinGacha(context, meta)
+                      : null,
+                  icon: const Icon(Icons.monetization_on_rounded),
+                  label: const Text('Spend 120 coins'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    side: BorderSide(color: Colors.white.withOpacity(0.35)),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                  ),
                 ),
-              ),
             ],
           ),
         ],
@@ -556,6 +570,16 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
     );
   }
 
+  Future<void> _triggerFreeGacha(
+      BuildContext context, MetaProvider meta) async {
+    final result = await meta.pullGacha(viaAd: false);
+    if (!mounted) return;
+    _showSnackMessage(
+      context,
+      'Unlocked ${result.displayName}${result.wasGuaranteed ? ' (guaranteed!)' : ''}',
+    );
+  }
+
   void _showSnackMessage(BuildContext context, String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -587,6 +611,13 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
             activeColor: const Color(0xFF38BDF8),
             title: const Text('Left-handed controls'),
             subtitle: const Text('Swap jump and draw sides'),
+          ),
+          SwitchListTile.adaptive(
+            value: meta.oneTapMode,
+            onChanged: (value) => meta.updateSettings(oneTapMode: value),
+            activeColor: const Color(0xFF38BDF8),
+            title: const Text('One-tap mode'),
+            subtitle: const Text('Tap to jump, hold anywhere to draw'),
           ),
           SwitchListTile.adaptive(
             value: meta.colorBlindMode,
@@ -647,6 +678,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
               lineProvider,
               obstacleProvider,
               coinProvider,
+              game.worldListenable,
             ]);
             return LayoutBuilder(
               builder: (context, constraints) {
@@ -657,58 +689,110 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
 
                 final halfWidth = size.width * 0.5;
                 final isLeftHanded = metaProvider.leftHandedMode;
+                final oneTapMode = metaProvider.oneTapMode;
                 bool isJumpZone(Offset offset) =>
                     isLeftHanded ? offset.dx > halfWidth : offset.dx < halfWidth;
                 return GestureDetector(
                   behavior: HitTestBehavior.translucent,
-                  onTapDown: (details) {
-                    if (game.gameState == GameState.ready) {
-                      game.startGame();
-                      return;
-                    }
-                    if (game.gameState == GameState.running &&
-                        isJumpZone(details.localPosition)) {
-                      game.jump();
-                    }
-                  },
-                  onPanStart: (details) {
-                    if (game.gameState != GameState.running) {
-                      return;
-                    }
-                    if (isJumpZone(details.localPosition)) {
-                      _isDrawingGestureActive = false;
-                      game.jump();
-                      return;
-                    }
-                    final started = lineProvider.startNewLine(details.localPosition);
-                    _isDrawingGestureActive = started;
-                    if (started) {
-                      game.markLineUsed();
-                      HapticFeedback.lightImpact();
-                    }
-                  },
-                  onPanUpdate: (details) {
-                    if (game.gameState != GameState.running) {
-                      return;
-                    }
-                    if (_isDrawingGestureActive && lineProvider.isDrawing) {
-                      lineProvider.addPointToLine(details.localPosition);
-                    } else {
-                      _isDrawingGestureActive = false;
-                    }
-                  },
-                  onPanEnd: (_) {
-                    if (_isDrawingGestureActive || lineProvider.isDrawing) {
-                      _isDrawingGestureActive = false;
-                      lineProvider.endCurrentLine();
-                    }
-                  },
-                  onPanCancel: (_) {
-                    if (_isDrawingGestureActive || lineProvider.isDrawing) {
-                      _isDrawingGestureActive = false;
-                      lineProvider.endCurrentLine();
-                    }
-                  },
+                  onTapDown: oneTapMode
+                      ? null
+                      : (details) {
+                          if (game.gameState == GameState.ready) {
+                            game.startGame();
+                            return;
+                          }
+                          if (game.gameState == GameState.running &&
+                              isJumpZone(details.localPosition)) {
+                            game.jump();
+                          }
+                        },
+                  onTapUp: oneTapMode
+                      ? (_) {
+                          if (game.gameState == GameState.ready) {
+                            game.startGame();
+                          } else if (game.gameState == GameState.running) {
+                            game.jump();
+                          }
+                        }
+                      : null,
+                  onPanStart: oneTapMode
+                      ? null
+                      : (details) {
+                          if (game.gameState != GameState.running) {
+                            return;
+                          }
+                          if (isJumpZone(details.localPosition)) {
+                            _isDrawingGestureActive = false;
+                            game.jump();
+                            return;
+                          }
+                          final started =
+                              lineProvider.startNewLine(details.localPosition);
+                          _isDrawingGestureActive = started;
+                          if (started) {
+                            game.markLineUsed();
+                            HapticFeedback.lightImpact();
+                          }
+                        },
+                  onPanUpdate: oneTapMode
+                      ? null
+                      : (details) {
+                          if (game.gameState != GameState.running) {
+                            return;
+                          }
+                          if (_isDrawingGestureActive && lineProvider.isDrawing) {
+                            lineProvider.addPointToLine(details.localPosition);
+                          } else {
+                            _isDrawingGestureActive = false;
+                          }
+                        },
+                  onPanEnd: oneTapMode
+                      ? null
+                      : (_) {
+                          if (_isDrawingGestureActive || lineProvider.isDrawing) {
+                            _isDrawingGestureActive = false;
+                            lineProvider.endCurrentLine();
+                          }
+                        },
+                  onPanCancel: oneTapMode
+                      ? null
+                      : (_) {
+                          if (_isDrawingGestureActive || lineProvider.isDrawing) {
+                            _isDrawingGestureActive = false;
+                            lineProvider.endCurrentLine();
+                          }
+                        },
+                  onLongPressStart: oneTapMode
+                      ? (details) {
+                          if (game.gameState != GameState.running) {
+                            return;
+                          }
+                          final started =
+                              lineProvider.startNewLine(details.localPosition);
+                          _isOneTapDrawing = started;
+                          if (started) {
+                            game.markLineUsed();
+                            HapticFeedback.lightImpact();
+                          }
+                        }
+                      : null,
+                  onLongPressMoveUpdate: oneTapMode
+                      ? (details) {
+                          if (!_isOneTapDrawing ||
+                              game.gameState != GameState.running) {
+                            return;
+                          }
+                          lineProvider.addPointToLine(details.localPosition);
+                        }
+                      : null,
+                  onLongPressEnd: oneTapMode
+                      ? (_) {
+                          if (_isOneTapDrawing || lineProvider.isDrawing) {
+                            _isOneTapDrawing = false;
+                            lineProvider.endCurrentLine();
+                          }
+                        }
+                      : null,
                   child: Stack(
                     children: [
                       Positioned.fill(
@@ -727,6 +811,8 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                                   colorBlindFriendly: metaProvider.colorBlindMode,
                                   elapsedMs: game.elapsedRunMs,
                                   scrollSpeed: obstacleProvider.speed,
+                                  frameId: game.worldFrame,
+                                  lineSignature: lineProvider.signature,
                                 ),
                               );
                             },
@@ -734,6 +820,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                         ),
                       ),
                       _buildTutorialOverlay(context, game, metaProvider),
+                      _buildToastOverlay(context, game),
                       _buildGameUI(context, game, metaProvider),
                     ],
                   ),
@@ -761,6 +848,61 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
       case GameState.result:
         return const SizedBox.shrink();
     }
+  }
+
+  Widget _buildToastOverlay(BuildContext context, GameProvider game) {
+    final textTheme = Theme.of(context).textTheme;
+    return ValueListenableBuilder<GameToast?>(
+      valueListenable: game.toastListenable,
+      builder: (context, toast, _) {
+        if (toast == null) {
+          return const SizedBox.shrink();
+        }
+        return Positioned(
+          top: 32,
+          left: 16,
+          right: 16,
+          child: AnimatedOpacity(
+            opacity: toast == null ? 0 : 1,
+            duration: const Duration(milliseconds: 180),
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.7),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: toast.color.withOpacity(0.4)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: toast.color.withOpacity(0.2),
+                      blurRadius: 18,
+                      offset: const Offset(0, 8),
+                    )
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(toast.icon, color: toast.color, size: 22),
+                    const SizedBox(width: 10),
+                    Text(
+                      toast.message,
+                      style: textTheme.bodyMedium?.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.4,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Widget _buildReadyUI(BuildContext context, MetaProvider meta) {
@@ -823,7 +965,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
             _buildWalletBanner(context, meta),
             const SizedBox(height: 12),
             OutlinedButton.icon(
-              onPressed: () {
+              onPressed: () { 
                 _showSkinShop(context);
               },
               icon: const Icon(Icons.color_lens_rounded),
@@ -837,8 +979,180 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                 ),
               ),
             ),
+            const SizedBox(height: 16),
+            _buildReadyAdBoostButton(context, meta),
+            const SizedBox(height: 16),
+            if (!meta.hasShownLeftHandPrompt)
+              _buildLeftHandPromptCard(context, meta),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildReadyAdBoostButton(BuildContext context, MetaProvider meta) {
+    return Consumer<AdProvider>(
+      builder: (context, ad, _) {
+        final ready = ad.isRewardedAdReady;
+        return ElevatedButton.icon(
+          onPressed: ready
+              ? () {
+                  final sound = context.read<SoundProvider>();
+                  ad.showRewardAd(
+                    placement: 'ready_boost',
+                    onReward: () {
+                      meta.queueRunBoost(
+                        const RunBoost(
+                          coinMultiplier: 2.0,
+                          inkRegenMultiplier: 1.25,
+                          duration: Duration(seconds: 30),
+                        ),
+                      );
+                      _showSnackMessage(
+                        context,
+                        '30s coin boost primed for your next run!',
+                      );
+                    },
+                    onAdOpened: () {
+                      sound.pauseBgmForInterruption();
+                    },
+                    onAdClosed: () {
+                      sound.resumeBgmAfterInterruption();
+                    },
+                    onFallbackReward: () {
+                      meta.addCoins(80);
+                      _showSnackMessage(
+                        context,
+                        'Ad unavailable — grabbed 80 coins instead.',
+                      );
+                    },
+                  );
+                }
+              : null,
+          icon: const Icon(Icons.bolt_rounded),
+          label: Text(
+            ready ? 'WATCH AD: 30s BOOST' : 'Loading ad bonus…',
+          ),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFFF97316),
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildLeftHandPromptCard(BuildContext context, MetaProvider meta) {
+    final textTheme = Theme.of(context).textTheme;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.4),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withOpacity(0.12)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Left-handed mode available',
+            style: textTheme.titleSmall?.copyWith(
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Swap jump and draw sides for a more comfortable grip.',
+            style: textTheme.bodySmall?.copyWith(color: Colors.white70),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () {
+                    meta.updateSettings(leftHanded: true);
+                    meta.markLeftHandPromptSeen();
+                    _showSnackMessage(context, 'Left-handed controls enabled');
+                  },
+                  child: const Text('Enable'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextButton(
+                  onPressed: () {
+                    meta.markLeftHandPromptSeen();
+                  },
+                  child: const Text('Maybe later'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAdValueLegend(TextTheme textTheme) {
+    return Wrap(
+      alignment: WrapAlignment.center,
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        _buildLegendChip(
+          icon: Icons.favorite_rounded,
+          label: 'Revive (best)',
+          color: const Color(0xFFF97316),
+          textTheme: textTheme,
+        ),
+        _buildLegendChip(
+          icon: Icons.monetization_on_rounded,
+          label: 'Coins x2',
+          color: const Color(0xFFFACC15),
+          textTheme: textTheme,
+        ),
+        _buildLegendChip(
+          icon: Icons.casino_rounded,
+          label: 'Gacha roll',
+          color: const Color(0xFFA855F7),
+          textTheme: textTheme,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLegendChip({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required TextTheme textTheme,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.16),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withOpacity(0.4)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 18, color: color),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: textTheme.bodySmall?.copyWith(
+              color: Colors.white,
+              letterSpacing: 0.6,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -849,97 +1163,124 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
     MetaProvider meta,
   ) {
     final textTheme = Theme.of(context).textTheme;
-    return Positioned(
-      top: 24,
-      left: 16,
-      right: 16,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-            decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.28),
-              borderRadius: BorderRadius.circular(22),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: _buildStatChip(
-                    context: context,
-                    icon: Icons.trending_up_rounded,
-                    label: 'Score',
-                    value: '${game.score}',
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _buildStatChip(
-                    context: context,
-                    icon: Icons.monetization_on_rounded,
-                    label: 'Coins',
-                    value: '${game.coinsCollected}',
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          Selector<LineProvider, _InkUiState>(
-            selector: (_, line) => _InkUiState(
-              canStartNewLine: line.canStartNewLine,
-              inkProgress: line.inkProgress,
-            ),
-            builder: (context, inkState, _) {
-              return Container(
-                width: 240,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+    return ValueListenableBuilder<int>(
+      valueListenable: game.hudListenable,
+      builder: (context, _, __) {
+        final remaining = game.nextScoreBonusTarget - game.score;
+        final safeRemaining = remaining > 0 ? remaining : 0;
+        return Positioned(
+          top: 24,
+          left: 16,
+          right: 16,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.24),
-                  borderRadius: BorderRadius.circular(18),
+                  color: Colors.black.withOpacity(0.28),
+                  borderRadius: BorderRadius.circular(22),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      inkState.canStartNewLine ? 'Ink ready' : 'Ink recharging',
-                      style: textTheme.bodyLarge?.copyWith(color: Colors.white),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildStatChip(
+                            context: context,
+                            icon: Icons.trending_up_rounded,
+                            label: 'Score',
+                            value: '${game.score}',
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _buildStatChip(
+                            context: context,
+                            icon: Icons.monetization_on_rounded,
+                            label: 'Coins',
+                            value: '${game.coinsCollected}',
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 8),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
-                      child: LinearProgressIndicator(
-                        value: inkState.inkProgress,
-                        minHeight: 8,
-                        backgroundColor: Colors.white.withOpacity(0.2),
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          inkState.canStartNewLine
-                              ? const Color(0xFF22C55E)
-                              : const Color(0xFFF97316),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
                     Text(
-                      '${(inkState.inkProgress * 100).clamp(0, 100).round()}% charge',
+                      safeRemaining == 0
+                          ? 'Bonus ready! Cash in at the finish.'
+                          : 'Next bonus in $safeRemaining pts (+${game.nextScoreBonusReward} coins)',
                       style: textTheme.bodySmall?.copyWith(
                         color: Colors.white70,
-                        letterSpacing: 1.1,
+                        letterSpacing: 0.6,
                       ),
                     ),
                   ],
                 ),
-              );
-            },
+              ),
+              const SizedBox(height: 12),
+              Selector<LineProvider, _InkUiState>(
+                selector: (_, line) => _InkUiState(
+                  canStartNewLine: line.canStartNewLine,
+                  inkProgress: line.inkProgress,
+                ),
+                builder: (context, inkState, _) {
+                  return Container(
+                    width: 240,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.24),
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          inkState.canStartNewLine ? 'Ink ready' : 'Ink recharging',
+                          style: textTheme.bodyLarge?.copyWith(color: Colors.white),
+                        ),
+                        const SizedBox(height: 8),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: LinearProgressIndicator(
+                            value: inkState.inkProgress,
+                            minHeight: 8,
+                            backgroundColor: Colors.white.withOpacity(0.2),
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              inkState.canStartNewLine
+                                  ? const Color(0xFF22C55E)
+                                  : const Color(0xFFF97316),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${(inkState.inkProgress * 100).clamp(0, 100).round()}% charge',
+                          style: textTheme.bodySmall?.copyWith(
+                            color: Colors.white70,
+                            letterSpacing: 1.1,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+              if (game.isRestWindow) ...[
+                const SizedBox(height: 12),
+                _buildRestIndicator(context, game),
+              ],
+              if (game.isBoostActive) ...[
+                const SizedBox(height: 12),
+                _buildBoostIndicator(context, game),
+              ],
+              const SizedBox(height: 12),
+              _buildWalletBanner(context, meta),
+            ],
           ),
-          if (game.isRestWindow) ...[
-            const SizedBox(height: 12),
-            _buildRestIndicator(context, game),
-          ],
-          const SizedBox(height: 12),
-          _buildWalletBanner(context, meta),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -985,6 +1326,41 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
               ),
             ],
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBoostIndicator(BuildContext context, GameProvider game) {
+    final textTheme = Theme.of(context).textTheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1F2937).withOpacity(0.8),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.orangeAccent.withOpacity(0.35)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.bolt_rounded, color: Color(0xFFFBBF24), size: 22),
+          const SizedBox(width: 10),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Boost active',
+                style: textTheme.bodyMedium?.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              Text(
+                '${game.boostRemainingSeconds.ceil()}s of x${game.boostCoinMultiplier.toStringAsFixed(1)} coins & +${((game.boostInkMultiplier - 1) * 100).round()}% ink',
+                style: textTheme.bodySmall?.copyWith(color: Colors.white70),
+              ),
+            ],
+          )
         ],
       ),
     );
@@ -1040,6 +1416,22 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                   style: textTheme.bodyLarge?.copyWith(
                     color: Colors.white70,
                     fontSize: 16,
+                  ),
+                ),
+                if (game.lastRunBonusCoins > 0) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    'Bonus coins banked: +${game.lastRunBonusCoins}',
+                    style: textTheme.bodyMedium?.copyWith(
+                      color: const Color(0xFF38BDF8),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 6),
+                Text(
+                  'Next goal: ${game.nextScoreBonusTarget} pts for +${game.nextScoreBonusReward} coins',
+                  style: textTheme.bodySmall?.copyWith(
+                    color: Colors.white70,
                   ),
                 ),
                 const SizedBox(height: 28),
@@ -1135,6 +1527,8 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                       ),
                   ],
                 ),
+                const SizedBox(height: 12),
+                _buildAdValueLegend(textTheme),
                 const SizedBox(height: 16),
                 TextButton(
                   onPressed: () async {

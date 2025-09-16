@@ -22,6 +22,7 @@ class AdProvider with ChangeNotifier {
   final List<String> _interstitialCandidates = [];
   int _nextInterstitialIndex = 0;
   int _mediationAttempts = 0;
+  int _rewardedLoadAttempts = 0;
 
   // Ad Unit IDs
   final String _rewardAdUnitId = Platform.isAndroid
@@ -42,6 +43,7 @@ class AdProvider with ChangeNotifier {
   final AnalyticsProvider analytics;
 
   void loadRewardAd() {
+    _rewardedLoadAttempts = 0;
     RewardedAd.load(
       adUnitId: _rewardAdUnitId,
       request: const AdRequest(),
@@ -49,11 +51,19 @@ class AdProvider with ChangeNotifier {
         onAdLoaded: (ad) {
           _rewardedAd = ad;
           _isRewardedAdReady = true;
+          _rewardedLoadAttempts = 0;
           notifyListeners();
         },
         onAdFailedToLoad: (error) {
           _isRewardedAdReady = false;
           notifyListeners();
+          _rewardedLoadAttempts++;
+          if (_rewardedLoadAttempts <= 3) {
+            Future.delayed(
+              Duration(seconds: 2 * _rewardedLoadAttempts),
+              loadRewardAd,
+            );
+          }
         },
       ),
     );
@@ -88,9 +98,11 @@ class AdProvider with ChangeNotifier {
     required VoidCallback onReward,
     VoidCallback? onAdOpened,
     VoidCallback? onAdClosed,
+    VoidCallback? onFallbackReward,
   }) {
     final ad = _rewardedAd;
     if (ad == null) {
+      onFallbackReward?.call();
       return;
     }
 
@@ -107,6 +119,7 @@ class AdProvider with ChangeNotifier {
         ad.dispose();
         loadRewardAd();
         onAdClosed?.call();
+        onFallbackReward?.call();
       },
     );
 
@@ -185,8 +198,9 @@ class AdProvider with ChangeNotifier {
     }
   }
 
-  void applyRemoteConfig(AdRemoteConfig config) {
+  AdProvider applyRemoteConfig(AdRemoteConfig config) {
     _config = config;
+    return this;
   }
 
   void configureMediationOrder(List<String> interstitialUnitIds) {
