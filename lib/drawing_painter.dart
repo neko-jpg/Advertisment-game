@@ -1,8 +1,10 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import 'constants/game_constants.dart';
 import 'coin_provider.dart';
 import 'line_provider.dart';
 import 'obstacle_provider.dart';
@@ -47,13 +49,22 @@ class DrawingPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final resources = _resourceCache.resourcesFor(size);
-    _drawBackground(canvas, size, resources);
-    _drawGround(canvas, resources);
-    _drawCoins(canvas);
-    _drawObstacles(canvas);
-    _drawLines(canvas);
-    _drawPlayer(canvas);
+    try {
+      final resources = _resourceCache.resourcesFor(size);
+      _drawBackground(canvas, size, resources);
+      _drawGround(canvas, resources);
+      _drawCoins(canvas);
+      _drawObstacles(canvas);
+      _drawLines(canvas);
+      _drawPlayer(canvas);
+    } catch (error, stackTrace) {
+      debugPrint('DrawingPainter paint error: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      canvas.drawRect(
+        Rect.fromLTWH(0, 0, size.width, size.height),
+        Paint()..color = Colors.black,
+      );
+    }
   }
 
   void _drawBackground(
@@ -218,7 +229,8 @@ class DrawingPainter extends CustomPainter {
 
   void _drawPlayer(Canvas canvas) {
     final double time = elapsedMs / 1000.0;
-    final bool airborne = playerPosition.dy < 379;
+    final bool airborne =
+        playerPosition.dy < GameConstants.playerStartY - 1;
     final double phase = time * (airborne ? 8.0 : 6.0);
     final double bob = airborne ? -6 + math.sin(phase) * 2 : math.sin(phase) * 3;
     final Offset center = playerPosition.translate(0, bob);

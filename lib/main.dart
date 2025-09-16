@@ -39,7 +39,12 @@ void main() async {
     debugPrintStack(stackTrace: stackTrace);
     analytics = AnalyticsProvider.fake();
   }
-  await MobileAds.instance.initialize();
+  try {
+    await MobileAds.instance.initialize();
+  } catch (error, stackTrace) {
+    debugPrint('Mobile ads initialization failed: $error');
+    debugPrintStack(stackTrace: stackTrace);
+  }
 
   runApp(QuickDrawDashApp(analytics: analytics, firebaseReady: firebaseReady));
 }

@@ -278,11 +278,12 @@ class GameProvider with ChangeNotifier {
 
     _gameState = GameState.running;
     _score = 0;
-    _playerY = 380.0;
+    _playerY = GameConstants.playerStartY;
     _playerYSpeed = 0.0;
     _jumpBufferTimerMs = 0.0;
     _activeUpgrades = metaProvider.upgradeSnapshot;
-    _baseCoyoteDurationMs = 120.0 + _activeUpgrades.coyoteBonusMs;
+    _baseCoyoteDurationMs =
+        GameConstants.baseCoyoteDurationMs + _activeUpgrades.coyoteBonusMs;
     _coyoteTimerMs = _baseCoyoteDurationMs;
     _lastFrameTimestamp = null;
     _runStartTime = DateTime.now();
@@ -497,7 +498,7 @@ class GameProvider with ChangeNotifier {
     }
 
     // --- Player physics ---
-    _playerYSpeed += 0.5 * dt; // Gravity scaled by delta
+    _playerYSpeed += GameConstants.gravityPerFrame * dt;
     _playerY += _playerYSpeed * dt;
 
     if (lineProvider.lines.isNotEmpty) {
@@ -534,8 +535,8 @@ class GameProvider with ChangeNotifier {
     }
 
     // Check for ground collision
-    if (!onGround && _playerY >= 380) {
-      _playerY = 380;
+    if (!onGround && _playerY >= GameConstants.playerStartY) {
+      _playerY = GameConstants.playerStartY;
       _playerYSpeed = 0;
       onGround = true;
     }
@@ -546,7 +547,7 @@ class GameProvider with ChangeNotifier {
 
     bool didTriggerBufferedJump = false;
     if (_jumpBufferTimerMs > 0 && (onGround || _coyoteTimerMs > 0)) {
-      _playerYSpeed = -12.0;
+      _playerYSpeed = GameConstants.jumpVelocity;
       _jumpBufferTimerMs = 0.0;
       _coyoteTimerMs = 0.0;
       onGround = false;
@@ -657,7 +658,7 @@ class GameProvider with ChangeNotifier {
     _revivesUsedThisRun++;
     obstacleProvider.reset();
     lineProvider.clearAllLines();
-    _playerY = 380.0;
+    _playerY = GameConstants.playerStartY;
     _playerYSpeed = 0.0;
     _gameState = GameState.running;
     _jumpBufferTimerMs = 0.0;
@@ -790,7 +791,7 @@ class GameProvider with ChangeNotifier {
   void resetGame() {
     _gameState = GameState.ready;
     _score = 0;
-    _playerY = 380.0;
+    _playerY = GameConstants.playerStartY;
     _playerYSpeed = 0.0;
     _jumpBufferTimerMs = 0.0;
     _coyoteTimerMs = 0.0;
