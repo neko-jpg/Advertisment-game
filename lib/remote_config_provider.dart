@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_remote_config/firebase_remote_config.dart';
 import 'package:flutter/foundation.dart';
 
@@ -7,13 +8,19 @@ import 'game_models.dart';
 
 class RemoteConfigProvider with ChangeNotifier {
   RemoteConfigProvider({bool initialize = true}) {
-    if (initialize) {
-      _remoteConfig = FirebaseRemoteConfig.instance;
-      _init();
-    } else {
-      _remoteConfig = null;
-      _isReady = true;
+    final shouldInitialize = initialize && Firebase.apps.isNotEmpty;
+    if (shouldInitialize) {
+      try {
+        _remoteConfig = FirebaseRemoteConfig.instance;
+        _init();
+        return;
+      } catch (error, stackTrace) {
+        debugPrint('Remote config unavailable: $error');
+        debugPrintStack(stackTrace: stackTrace);
+      }
     }
+    _remoteConfig = null;
+    _isReady = true;
   }
 
   FirebaseRemoteConfig? _remoteConfig;

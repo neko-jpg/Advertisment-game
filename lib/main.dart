@@ -19,10 +19,12 @@ import 'remote_config_provider.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   AnalyticsProvider analytics;
+  var firebaseReady = false;
   try {
     if (Firebase.apps.isEmpty) {
       await Firebase.initializeApp();
     }
+    firebaseReady = Firebase.apps.isNotEmpty;
     analytics = AnalyticsProvider();
   } catch (error, stackTrace) {
     debugPrint('Firebase initialization failed: $error');
@@ -31,18 +33,20 @@ void main() async {
   }
   await MobileAds.instance.initialize();
 
-  runApp(QuickDrawDashApp(analytics: analytics));
+  runApp(QuickDrawDashApp(analytics: analytics, firebaseReady: firebaseReady));
 }
 
 class QuickDrawDashApp extends StatelessWidget {
   const QuickDrawDashApp({
     super.key,
     required this.analytics,
+    required this.firebaseReady,
     this.remoteConfigOverride,
     this.soundProviderOverride,
   });
 
   final AnalyticsProvider analytics;
+  final bool firebaseReady;
   final RemoteConfigProvider? remoteConfigOverride;
   final SoundProvider? soundProviderOverride;
 
@@ -78,6 +82,7 @@ class QuickDrawDashApp extends StatelessWidget {
           textTheme: textTheme,
         ),
         home: GameScreenWrapper(
+          firebaseReady: firebaseReady,
           remoteConfigOverride: remoteConfigOverride,
           soundProviderOverride: soundProviderOverride,
         ),
@@ -90,10 +95,12 @@ class QuickDrawDashApp extends StatelessWidget {
 class GameScreenWrapper extends StatefulWidget {
   const GameScreenWrapper({
     super.key,
+    required this.firebaseReady,
     this.remoteConfigOverride,
     this.soundProviderOverride,
   });
 
+  final bool firebaseReady;
   final RemoteConfigProvider? remoteConfigOverride;
   final SoundProvider? soundProviderOverride;
 
@@ -116,7 +123,7 @@ class _GameScreenWrapperState extends State<GameScreenWrapper>
       _remoteConfig = configOverride;
       _ownsRemoteConfig = false;
     } else {
-      _remoteConfig = RemoteConfigProvider();
+      _remoteConfig = RemoteConfigProvider(initialize: widget.firebaseReady);
       _ownsRemoteConfig = true;
     }
     final soundOverride = widget.soundProviderOverride;
