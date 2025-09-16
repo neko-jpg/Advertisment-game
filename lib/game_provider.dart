@@ -3,11 +3,13 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter/services.dart';
 import 'ad_provider.dart';
 import 'line_provider.dart';
 import 'obstacle_provider.dart';
 import 'coin_provider.dart';
 import 'sound_provider.dart'; // Import SoundProvider
+import 'meta_provider.dart';
 
 enum GameState { ready, running, dead, result }
 
@@ -24,6 +26,13 @@ class GameProvider with ChangeNotifier {
   double _coyoteTimerMs = 0.0;
   double _jumpBufferTimerMs = 0.0;
   DateTime? _lastFrameTimestamp;
+  DateTime? _runStartTime;
+  double _elapsedRunMs = 0.0;
+  bool _didJumpThisRun = false;
+  bool _didDrawLineThisRun = false;
+  bool _hasCompletedTutorial = false;
+  bool _hasBankedRewards = false;
+  Duration _lastRunDuration = Duration.zero;
 
   // Providers
   AdProvider adProvider;
@@ -50,6 +59,14 @@ class GameProvider with ChangeNotifier {
   int get score => _score;
   int get coinsCollected => coinProvider.coinsCollected;
   Size get screenSize => _screenSize;
+  double get elapsedRunMs => _elapsedRunMs;
+  Duration get lastRunDuration => _lastRunDuration;
+  bool get isTutorialActive => !_hasCompletedTutorial;
+  bool get showJumpHint =>
+      isTutorialActive && !_didJumpThisRun && _elapsedRunMs <= 8000;
+  bool get showDrawHint =>
+      isTutorialActive && !_didDrawLineThisRun &&
+      _elapsedRunMs >= 5000 && _elapsedRunMs <= 18000;
 
   void setScreenSize(Size size) {
     if (_screenSize == size) {
@@ -68,12 +85,21 @@ class GameProvider with ChangeNotifier {
     _jumpBufferTimerMs = 0.0;
     _coyoteTimerMs = _coyoteDurationMs;
     _lastFrameTimestamp = null;
+    _runStartTime = DateTime.now();
+    _elapsedRunMs = 0.0;
+    _didJumpThisRun = false;
+    _didDrawLineThisRun = false;
+    _hasBankedRewards = false;
+    _lastRunDuration = Duration.zero;
 
     // Reset all providers
     lineProvider.clearAllLines();
     obstacleProvider.reset();
     coinProvider.reset();
-    obstacleProvider.startSpawning();
+    obstacleProvider.start(
+      screenWidth: _screenSize.width,
+      tutorialMode: isTutorialActive,
+    );
     soundProvider.startBgm(); // Start BGM
 
     adProvider.loadInterstitialAd(); // Load interstitial ad
@@ -107,8 +133,12 @@ class GameProvider with ChangeNotifier {
 
     // --- Updates ---
     lineProvider.updateLineLifetimes();
-    obstacleProvider.updateObstacles();
-    
+    obstacleProvider.update(
+      deltaMs: deltaMs,
+      screenWidth: _screenSize.width,
+      tutorialMode: isTutorialActive,
+    );
+
     // --- Player physics ---
     _playerYSpeed += 0.5; // Gravity
     _playerY += _playerYSpeed;
@@ -160,6 +190,7 @@ class GameProvider with ChangeNotifier {
 
     if (didTriggerBufferedJump) {
       soundProvider.playJumpSfx();
+      HapticFeedback.lightImpact();
     }
 
     final Rect playerRect = Rect.fromLTWH(playerX - 15, playerY - 15, 30, 30);
@@ -171,6 +202,7 @@ class GameProvider with ChangeNotifier {
     // Play coin sound if a coin was collected
     if (coinProvider.coinsCollected > initialCoins) {
       soundProvider.playCoinSfx();
+      HapticFeedback.selectionClick();
     }
 
     // --- Obstacle collision ---
@@ -181,6 +213,14 @@ class GameProvider with ChangeNotifier {
         obstacleProvider.stopSpawning();
         soundProvider.stopBgm(); // Stop BGM
         soundProvider.playGameOverSfx(); // Play game over sound
+        HapticFeedback.heavyImpact();
+        final now = DateTime.now();
+        if (_runStartTime != null) {
+          _lastRunDuration = now.difference(_runStartTime!);
+        }
+        _hasCompletedTutorial =
+            _hasCompletedTutorial || (_didJumpThisRun && _didDrawLineThisRun);
+        _hasBankedRewards = false;
         _ticker?.stop();
         adProvider.loadRewardAd(); // Pre-load ad for revive option
         notifyListeners();
@@ -193,6 +233,7 @@ class GameProvider with ChangeNotifier {
       obstacleProvider.increaseSpeed();
     }
 
+    _elapsedRunMs += deltaMs;
     _score++;
     notifyListeners();
   }
@@ -207,7 +248,11 @@ class GameProvider with ChangeNotifier {
     _jumpBufferTimerMs = 0.0;
     _coyoteTimerMs = _coyoteDurationMs;
     _lastFrameTimestamp = null;
-    obstacleProvider.startSpawning();
+    _runStartTime = DateTime.now().subtract(_lastRunDuration);
+    obstacleProvider.start(
+      screenWidth: _screenSize.width,
+      tutorialMode: isTutorialActive,
+    );
     soundProvider.startBgm(); // Restart BGM
     _ticker?.start();
 
@@ -219,6 +264,32 @@ class GameProvider with ChangeNotifier {
       return;
     }
     _jumpBufferTimerMs = _jumpBufferDurationMs;
+    if (!_didJumpThisRun) {
+      _didJumpThisRun = true;
+      notifyListeners();
+    }
+  }
+
+  void markLineUsed() {
+    if (_gameState != GameState.running) {
+      return;
+    }
+    if (!_didDrawLineThisRun) {
+      _didDrawLineThisRun = true;
+      notifyListeners();
+    }
+  }
+
+  Future<void> finalizeRun({required MetaProvider metaProvider}) async {
+    if (_gameState != GameState.dead || _hasBankedRewards) {
+      return;
+    }
+    final coins = coinProvider.coinsCollected;
+    if (coins > 0) {
+      await metaProvider.addCoins(coins);
+    }
+    adProvider.registerRunEnd(_lastRunDuration);
+    _hasBankedRewards = true;
   }
 
   void resetGame() {
@@ -229,6 +300,12 @@ class GameProvider with ChangeNotifier {
     _jumpBufferTimerMs = 0.0;
     _coyoteTimerMs = 0.0;
     _lastFrameTimestamp = null;
+    _runStartTime = null;
+    _elapsedRunMs = 0.0;
+    _didJumpThisRun = false;
+    _didDrawLineThisRun = false;
+    _lastRunDuration = Duration.zero;
+    _hasBankedRewards = false;
     _ticker?.stop();
     lineProvider.clearAllLines();
     obstacleProvider.reset();
