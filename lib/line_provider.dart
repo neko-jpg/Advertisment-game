@@ -12,20 +12,24 @@ class LineProvider with ChangeNotifier {
   LineProvider();
 
   static const Duration lineLifetime = Duration(milliseconds: 2100);
-  static const double _maxInk = 100.0;
+  static const double _baseMaxInk = 100.0;
   static const double _minInkToStart = 8.0;
-  static const double _inkRegenPerSecond = 28.0;
+  static const double _baseInkRegenPerSecond = 28.0;
   static const double _inkCostPerPixel = 0.45;
   static const double _pointDistanceThreshold = 4.0;
 
   final List<DrawnLine> _lines = [];
-  double _inkAmount = _maxInk;
+  double _inkAmount = _baseMaxInk;
   bool _isDrawing = false;
   DateTime? _lastInkUpdate;
+  double _regenMultiplier = 1.0;
+  double _capacityBonus = 0.0;
 
   List<DrawnLine> get lines => _lines;
 
   double get inkAmount => _inkAmount;
+
+  double get _maxInk => (_baseMaxInk + _capacityBonus).clamp(60.0, 200.0);
 
   double get inkProgress => (_inkAmount / _maxInk).clamp(0.0, 1.0);
 
@@ -105,8 +109,9 @@ class LineProvider with ChangeNotifier {
     if (elapsed.inMilliseconds > 0) {
       _lastInkUpdate = now;
       if (_inkAmount < _maxInk) {
-        final regenAmount =
-            _inkRegenPerSecond * elapsed.inMilliseconds / 1000.0;
+        final regenAmount = _currentRegenPerSecond *
+            elapsed.inMilliseconds /
+            1000.0;
         _inkAmount = (_inkAmount + regenAmount).clamp(0.0, _maxInk);
       }
     }
@@ -128,6 +133,23 @@ class LineProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  void configureUpgrades({
+    double? regenMultiplier,
+    double? capacityBonus,
+  }) {
+    if (regenMultiplier != null) {
+      _regenMultiplier = regenMultiplier.clamp(0.5, 3.0);
+    }
+    if (capacityBonus != null) {
+      _capacityBonus = capacityBonus.clamp(0, 120.0);
+      _inkAmount = _inkAmount.clamp(0.0, _maxInk);
+    }
+    notifyListeners();
+  }
+
+  double get _currentRegenPerSecond =>
+      _baseInkRegenPerSecond * _regenMultiplier;
+
   void _refreshInk() {
     final now = DateTime.now();
     if (_lastInkUpdate == null) {
@@ -142,7 +164,8 @@ class LineProvider with ChangeNotifier {
     if (_inkAmount >= _maxInk) {
       return;
     }
-    final regenAmount = _inkRegenPerSecond * elapsed.inMilliseconds / 1000.0;
+    final regenAmount =
+        _currentRegenPerSecond * elapsed.inMilliseconds / 1000.0;
     _inkAmount = (_inkAmount + regenAmount).clamp(0.0, _maxInk);
   }
 }

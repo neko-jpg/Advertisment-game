@@ -82,17 +82,18 @@ class _GameScreenWrapperState extends State<GameScreenWrapper> with TickerProvid
         ChangeNotifierProvider(create: (_) => LineProvider()),
         ChangeNotifierProvider(create: (_) => ObstacleProvider(gameWidth: gameWidth)),
         ChangeNotifierProvider(create: (_) => CoinProvider()),
-        ChangeNotifierProxyProvider4<AdProvider, LineProvider, ObstacleProvider, CoinProvider, GameProvider>(
+        ChangeNotifierProxyProvider5<AdProvider, LineProvider, ObstacleProvider, CoinProvider, MetaProvider, GameProvider>(
           create: (context) => GameProvider(
             adProvider: context.read<AdProvider>(),
             lineProvider: context.read<LineProvider>(),
             obstacleProvider: context.read<ObstacleProvider>(),
             coinProvider: context.read<CoinProvider>(),
+            metaProvider: context.read<MetaProvider>(),
             soundProvider: context.read<SoundProvider>(),
             vsync: this,
           ),
-          update: (_, ad, line, obstacle, coin, game) =>
-              game!..updateDependencies(ad, line, obstacle, coin),
+          update: (_, ad, line, obstacle, coin, meta, game) =>
+              game!..updateDependencies(ad, line, obstacle, coin, meta),
         ),
       ],
       child: const GameScreen(),

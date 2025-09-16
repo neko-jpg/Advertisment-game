@@ -1,30 +1,58 @@
 
 import 'dart:math';
+
 import 'package:flutter/material.dart';
 
 // Represents a single coin in the game world.
 class Coin {
+  Coin({required this.position});
+
   Offset position;
   final double radius = 15.0; // Size of the coin
-
-  Coin({required this.position});
 }
 
 // Manages the state of all coins in the game.
 class CoinProvider with ChangeNotifier {
+  CoinProvider();
+
   final List<Coin> _coins = [];
   int _coinsCollected = 0;
   final Random _random = Random();
 
+  /// Base probability (0-1) per frame to spawn a new coin.
+  static const double _baseSpawnChance = 0.02;
+
+  double _spawnMultiplier = 1.0;
+  double _restSpawnBonus = 1.5;
+  bool _inRestWindow = false;
+
   List<Coin> get coins => _coins;
   int get coinsCollected => _coinsCollected;
 
+  void configureSpawn({double? multiplier, double? restBonus}) {
+    if (multiplier != null) {
+      _spawnMultiplier = multiplier.clamp(0.2, 3.0);
+    }
+    if (restBonus != null) {
+      _restSpawnBonus = restBonus.clamp(1.0, 5.0);
+    }
+  }
+
+  void setRestWindowActive(bool value) {
+    if (_inRestWindow == value) {
+      return;
+    }
+    _inRestWindow = value;
+    notifyListeners();
+  }
+
   // Periodically spawn new coins off-screen to the right.
   void maybeSpawnCoin(double screenWidth, double screenHeight) {
-    // A 1% chance to spawn a coin on any given frame.
-    if (_random.nextInt(100) < 2) {
-      // Spawn coins at a random height, but not too close to the screen edges.
-      double yPosition = _random.nextDouble() * (screenHeight - 100) + 50;
+    final effectiveChance = _baseSpawnChance *
+        _spawnMultiplier *
+        (_inRestWindow ? _restSpawnBonus : 1.0);
+    if (_random.nextDouble() < effectiveChance) {
+      final yPosition = _random.nextDouble() * (screenHeight - 100) + 50;
       _coins.add(Coin(position: Offset(screenWidth + 50, yPosition)));
       notifyListeners();
     }
@@ -32,12 +60,10 @@ class CoinProvider with ChangeNotifier {
 
   // Update coin positions and check for collisions.
   void update(double speed, Rect playerRect, double screenWidth) {
-    // Move existing coins
     for (var coin in _coins) {
       coin.position = coin.position.translate(-speed, 0);
     }
 
-    // Check for collision with the player
     final collectedCoins = <Coin>[];
     for (var coin in _coins) {
       final coinRect = Rect.fromCircle(center: coin.position, radius: coin.radius);
@@ -46,9 +72,10 @@ class CoinProvider with ChangeNotifier {
         _coinsCollected++;
       }
     }
-    // Remove collected and off-screen coins
-    _coins.removeWhere((coin) =>
-        collectedCoins.contains(coin) || coin.position.dx < -coin.radius);
+
+    _coins.removeWhere(
+      (coin) => collectedCoins.contains(coin) || coin.position.dx < -coin.radius,
+    );
 
     if (collectedCoins.isNotEmpty) {
       notifyListeners();

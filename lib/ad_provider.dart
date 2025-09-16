@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
+import 'game_models.dart';
+
 class AdProvider with ChangeNotifier {
   RewardedAd? _rewardedAd;
   InterstitialAd? _interstitialAd;
@@ -10,6 +12,14 @@ class AdProvider with ChangeNotifier {
   int _runsCompleted = 0;
   Duration _timeSinceLastInterstitial = Duration.zero;
   DateTime? _lastInterstitialShownAt;
+  AdRemoteConfig _config = const AdRemoteConfig(
+    interstitialCooldown: Duration(seconds: 75),
+    minimumRunDuration: Duration(seconds: 20),
+    minimumRunsBeforeInterstitial: 2,
+  );
+  final List<String> _interstitialCandidates = [];
+  int _nextInterstitialIndex = 0;
+  int _mediationAttempts = 0;
 
   // Ad Unit IDs
   final String _rewardAdUnitId = Platform.isAndroid
@@ -46,8 +56,9 @@ class AdProvider with ChangeNotifier {
   }
 
   void loadInterstitialAd() {
+    _mediationAttempts = 0;
     InterstitialAd.load(
-      adUnitId: _interstitialAdUnitId,
+      adUnitId: _resolveInterstitialUnitId(),
       request: const AdRequest(),
       adLoadCallback: InterstitialAdLoadCallback(
         onAdLoaded: (ad) {
@@ -55,6 +66,14 @@ class AdProvider with ChangeNotifier {
         },
         onAdFailedToLoad: (error) {
           _interstitialAd = null;
+          if (_interstitialCandidates.isNotEmpty) {
+            _nextInterstitialIndex =
+                (_nextInterstitialIndex + 1) % _interstitialCandidates.length;
+            if (_mediationAttempts < _interstitialCandidates.length) {
+              _mediationAttempts++;
+              loadInterstitialAd();
+            }
+          }
         },
       ),
     );
@@ -94,13 +113,15 @@ class AdProvider with ChangeNotifier {
     required Duration lastRunDuration,
     required VoidCallback onClosed,
   }) {
-    final bool skipForFirstRuns = _runsCompleted <= 2;
-    final bool wasShortRun = lastRunDuration.inSeconds < 20;
+    final bool skipForFirstRuns =
+        _runsCompleted < _config.minimumRunsBeforeInterstitial;
+    final bool wasShortRun = lastRunDuration < _config.minimumRunDuration;
     final DateTime now = DateTime.now();
     final bool elapsedSinceLastInterstitial = _lastInterstitialShownAt == null ||
-        now.difference(_lastInterstitialShownAt!) >= const Duration(seconds: 60);
+        now.difference(_lastInterstitialShownAt!) >=
+            _config.interstitialCooldown;
     final bool accumulatedTimeReached =
-        _timeSinceLastInterstitial >= const Duration(seconds: 60);
+        _timeSinceLastInterstitial >= _config.interstitialCooldown;
 
     if (!skipForFirstRuns && !wasShortRun &&
         elapsedSinceLastInterstitial && accumulatedTimeReached &&
@@ -126,6 +147,26 @@ class AdProvider with ChangeNotifier {
       }
       onClosed();
     }
+  }
+
+  void applyRemoteConfig(AdRemoteConfig config) {
+    _config = config;
+  }
+
+  void configureMediationOrder(List<String> interstitialUnitIds) {
+    _interstitialCandidates
+      ..clear()
+      ..addAll(interstitialUnitIds);
+    _nextInterstitialIndex = 0;
+    loadInterstitialAd();
+  }
+
+  String _resolveInterstitialUnitId() {
+    if (_interstitialCandidates.isEmpty) {
+      return _interstitialAdUnitId;
+    }
+    return _interstitialCandidates[
+        _nextInterstitialIndex % _interstitialCandidates.length];
   }
 
   @override

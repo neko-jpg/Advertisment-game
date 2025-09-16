@@ -16,6 +16,8 @@ class DrawingPainter extends CustomPainter {
     required this.obstacles,
     required this.coins,
     required this.skin,
+    required this.isRestWindow,
+    required this.colorBlindFriendly,
   });
 
   final Offset playerPosition;
@@ -23,6 +25,8 @@ class DrawingPainter extends CustomPainter {
   final List<Obstacle> obstacles;
   final List<Coin> coins;
   final PlayerSkin skin;
+  final bool isRestWindow;
+  final bool colorBlindFriendly;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -35,16 +39,27 @@ class DrawingPainter extends CustomPainter {
   }
 
   void _drawBackground(Canvas canvas, Size size) {
+    final gradient = isRestWindow
+        ? const LinearGradient(
+            colors: [
+              Color(0xFF0F172A),
+              Color(0xFF1E3A8A),
+              Color(0xFF34D399),
+            ],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          )
+        : const LinearGradient(
+            colors: [Color(0xFF0F172A), Color(0xFF1E293B), Color(0xFF38BDF8)],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          );
     final backgroundPaint = Paint()
-      ..shader = const LinearGradient(
-        colors: [Color(0xFF0F172A), Color(0xFF1E293B), Color(0xFF38BDF8)],
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
+      ..shader = gradient.createShader(Rect.fromLTWH(0, 0, size.width, size.height));
     canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), backgroundPaint);
 
     final starPaint = Paint()
-      ..color = Colors.white.withOpacity(0.25)
+      ..color = Colors.white.withOpacity(isRestWindow ? 0.15 : 0.25)
       ..strokeCap = StrokeCap.round
       ..strokeWidth = 2;
 
@@ -61,12 +76,18 @@ class DrawingPainter extends CustomPainter {
   void _drawGround(Canvas canvas, Size size) {
     const groundTop = 400.0;
     final groundRect = Rect.fromLTWH(0, groundTop, size.width, size.height - groundTop);
-    final groundPaint = Paint()
-      ..shader = const LinearGradient(
-        colors: [Color(0xFF0F766E), Color(0xFF047857)],
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-      ).createShader(groundRect);
+    final groundGradient = isRestWindow
+        ? const LinearGradient(
+            colors: [Color(0xFF15803D), Color(0xFF22C55E)],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          )
+        : const LinearGradient(
+            colors: [Color(0xFF0F766E), Color(0xFF047857)],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          );
+    final groundPaint = Paint()..shader = groundGradient.createShader(groundRect);
     canvas.drawRect(groundRect, groundPaint);
 
     final gridPaint = Paint()
@@ -97,9 +118,12 @@ class DrawingPainter extends CustomPainter {
   void _drawObstacles(Canvas canvas) {
     for (final obstacle in obstacles) {
       final rect = Rect.fromLTWH(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+      final colors = colorBlindFriendly
+          ? const [Color(0xFFEAB308), Color(0xFFB45309)]
+          : const [Color(0xFFFB7185), Color(0xFFF43F5E)];
       final paint = Paint()
-        ..shader = const LinearGradient(
-          colors: [Color(0xFFFB7185), Color(0xFFF43F5E)],
+        ..shader = LinearGradient(
+          colors: colors,
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
         ).createShader(rect);
@@ -107,7 +131,7 @@ class DrawingPainter extends CustomPainter {
       canvas.drawRRect(rrect, paint);
 
       final highlight = Paint()
-        ..color = Colors.white.withOpacity(0.25)
+        ..color = Colors.white.withOpacity(colorBlindFriendly ? 0.3 : 0.25)
         ..style = PaintingStyle.stroke
         ..strokeWidth = 2;
       canvas.drawRRect(rrect.deflate(3), highlight);
