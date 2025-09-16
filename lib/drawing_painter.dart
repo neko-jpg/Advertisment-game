@@ -25,6 +25,8 @@ class DrawingPainter extends CustomPainter {
     required this.lineSignature,
   });
 
+  static final _DrawingResourceCache _resourceCache = _DrawingResourceCache();
+
   final Offset playerPosition;
   final List<DrawnLine> lines;
   final List<Obstacle> obstacles;
@@ -45,56 +47,57 @@ class DrawingPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    _drawBackground(canvas, size);
-    _drawGround(canvas, size);
+    final resources = _resourceCache.resourcesFor(size);
+    _drawBackground(canvas, size, resources);
+    _drawGround(canvas, resources);
     _drawCoins(canvas);
     _drawObstacles(canvas);
     _drawLines(canvas);
     _drawPlayer(canvas);
   }
 
-  void _drawBackground(Canvas canvas, Size size) {
-    final backgroundColors = isRestWindow
-        ? const [Color(0xFF02131E), Color(0xFF0F2A4E), Color(0xFF34D399)]
-        : const [Color(0xFF020617), Color(0xFF0B1220), Color(0xFF1D4ED8)];
-    final gradient = LinearGradient(
-      colors: backgroundColors,
-      begin: Alignment.topCenter,
-      end: Alignment.bottomCenter,
-      stops: const [0.0, 0.45, 1.0],
-    );
-    final paint = Paint()
-      ..shader = gradient.createShader(Rect.fromLTWH(0, 0, size.width, size.height));
-    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), paint);
+  void _drawBackground(
+    Canvas canvas,
+    Size size,
+    _SizeResources resources,
+  ) {
+    final paint = resources.backgroundPaintFor(isRestWindow);
+    canvas.drawRect(resources.backgroundRect, paint);
 
-    _drawAurora(canvas, size);
-    _drawStarfield(canvas, size);
-    _drawParallaxLayers(canvas, size);
+    _drawAurora(canvas, size, resources);
+    _drawStarfield(canvas, resources);
+    _drawParallaxLayers(canvas, size, resources);
   }
 
-  void _drawStarfield(Canvas canvas, Size size) {
+  void _drawStarfield(Canvas canvas, _SizeResources resources) {
     final double time = elapsedMs / 1000.0;
-    final starPaint = Paint()
-      ..color = Colors.white.withOpacity(0.12 + 0.08 * math.sin(time * 2.2))
-      ..strokeCap = StrokeCap.round
-      ..strokeWidth = 2;
+    final starPaint = resources.starPaint
+      ..color = Colors.white.withOpacity(0.12 + 0.08 * math.sin(time * 2.2));
+    final widthWrap = resources.size.width + 120;
+    final heightBand = resources.size.height * 0.6;
 
-    for (double x = 0; x < size.width + 140; x += 70) {
-      final double baseY = (x * 0.35 + time * 40) % (size.height * 0.6);
-      final double jitter = math.sin((x + time * 60) * 0.02) * 10;
+    for (final baseX in resources.starBaseXs) {
+      final double baseY = (baseX * 0.35 + time * 40) % heightBand;
+      final double jitter = math.sin((baseX + time * 60) * 0.02) * 10;
       canvas.drawPoints(
         ui.PointMode.points,
         [
-          Offset((x + time * 50) % (size.width + 120), baseY + 40 + jitter),
-          Offset((x * 0.8 + 30) % (size.width + 120),
-              (baseY + 120) % (size.height * 0.6) + 80 - jitter),
+          Offset((baseX + time * 50) % widthWrap, baseY + 40 + jitter),
+          Offset(
+            (baseX * 0.8 + 30) % widthWrap,
+            (baseY + 120) % heightBand + 80 - jitter,
+          ),
         ],
         starPaint,
       );
     }
   }
 
-  void _drawAurora(Canvas canvas, Size size) {
+  void _drawAurora(
+    Canvas canvas,
+    Size size,
+    _SizeResources resources,
+  ) {
     final palette = isRestWindow
         ? const [Color(0xFF2DD4BF), Color(0xFF38BDF8), Color(0xFFA855F7)]
         : const [Color(0xFF2563EB), Color(0xFF22D3EE), Color(0xFFF472B6)];
@@ -108,7 +111,7 @@ class DrawingPainter extends CustomPainter {
         width: size.width * 0.55,
         height: 160,
       );
-      final auroraPaint = Paint()
+      final auroraPaint = resources.auroraPaints[i]
         ..shader = LinearGradient(
           colors: [
             palette[i % palette.length].withOpacity(0.0),
@@ -117,8 +120,7 @@ class DrawingPainter extends CustomPainter {
           ],
           begin: Alignment.bottomCenter,
           end: Alignment.topCenter,
-        ).createShader(rect)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 45);
+        ).createShader(rect);
       canvas.save();
       canvas.translate(math.sin(phase) * 24, 0);
       canvas.drawRRect(
@@ -129,42 +131,53 @@ class DrawingPainter extends CustomPainter {
     }
   }
 
-  void _drawParallaxLayers(Canvas canvas, Size size) {
+  void _drawParallaxLayers(
+    Canvas canvas,
+    Size size,
+    _SizeResources resources,
+  ) {
     final baseColor = isRestWindow ? const Color(0xFF0B3B33) : const Color(0xFF0B1120);
+    final firstPaint = resources.parallaxPaints[0]
+      ..color = baseColor.withOpacity(0.65);
+    final secondPaint = resources.parallaxPaints[1]
+      ..color = baseColor.withOpacity(0.5);
     _drawParallaxBand(
       canvas,
-      size,
+      resources,
+      bandIndex: 0,
       baseHeight: size.height * 0.58,
       amplitude: 24,
       speed: scrollSpeed * 0.45 + 18,
-      color: baseColor.withOpacity(0.65),
+      paint: firstPaint,
     );
     _drawParallaxBand(
       canvas,
-      size,
+      resources,
+      bandIndex: 1,
       baseHeight: size.height * 0.66,
       amplitude: 32,
       speed: scrollSpeed * 0.6 + 26,
-      color: baseColor.withOpacity(0.5),
+      paint: secondPaint,
     );
   }
 
   void _drawParallaxBand(
     Canvas canvas,
-    Size size, {
+    _SizeResources resources, {
+    required int bandIndex,
     required double baseHeight,
     required double amplitude,
     required double speed,
-    required Color color,
+    required Paint paint,
   }) {
-    final double width = size.width;
-    const double step = 140;
+    const double step = _SizeResources.parallaxStep;
     final double time = elapsedMs / 1000.0;
     final double offset = -(time * speed) % step;
-    final path = Path()
-      ..moveTo(-step, size.height)
+    final path = resources.parallaxPaths[bandIndex]
+      ..reset()
+      ..moveTo(-step, resources.size.height)
       ..lineTo(-step, baseHeight);
-    for (double x = -step; x <= width + step; x += step) {
+    for (final x in resources.parallaxBaseXs) {
       final double controlX = x + step / 2;
       final double controlY =
           baseHeight - math.sin((x + time * speed * 5) * 0.015) * amplitude;
@@ -174,69 +187,33 @@ class DrawingPainter extends CustomPainter {
       path.quadraticBezierTo(controlX, controlY, nextX, nextY);
     }
     path
-      ..lineTo(width + step, size.height)
+      ..lineTo(resources.size.width + step, resources.size.height)
       ..close();
-    final paint = Paint()..color = color;
     canvas.save();
     canvas.translate(offset, 0);
     canvas.drawPath(path, paint);
     canvas.restore();
   }
 
-  void _drawGround(Canvas canvas, Size size) {
-    const double groundTop = 400.0;
-    final groundRect = Rect.fromLTWH(0, groundTop, size.width, size.height - groundTop);
-    final groundGradient = isRestWindow
-        ? const LinearGradient(
-            colors: [Color(0xFF0F4E3B), Color(0xFF22C55E), Color(0xFFA7F3D0)],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          )
-        : const LinearGradient(
-            colors: [Color(0xFF0F172A), Color(0xFF0F766E), Color(0xFF22D3EE)],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          );
-    final paint = Paint()..shader = groundGradient.createShader(groundRect);
-    canvas.drawRect(groundRect, paint);
+  void _drawGround(Canvas canvas, _SizeResources resources) {
+    final groundPaint = resources.groundPaintFor(isRestWindow);
+    canvas.drawRect(resources.groundRect, groundPaint);
 
-    final highlightPaint = Paint()
-      ..shader = LinearGradient(
-        colors: [
-          Colors.white.withOpacity(0.14),
-          Colors.white.withOpacity(0.0),
-        ],
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-      ).createShader(groundRect);
-    canvas.drawRect(groundRect, highlightPaint);
+    canvas.drawRect(resources.groundRect, resources.highlightPaint);
 
-    final double stripeSpacing = 80;
     final double offset =
-        (elapsedMs * (scrollSpeed * 0.25 + 20) / 1000) % stripeSpacing;
-    final stripePaint = Paint()
-      ..color = Colors.white.withOpacity(0.08)
-      ..strokeWidth = 4
-      ..strokeCap = StrokeCap.round;
-    for (double x = -stripeSpacing; x < size.width + stripeSpacing; x += stripeSpacing) {
-      final double startX = x + offset;
+        (elapsedMs * (scrollSpeed * 0.25 + 20) / 1000) % _SizeResources.stripeSpacing;
+    final stripePaint = resources.stripePaint;
+    for (final baseX in resources.stripeBaseXs) {
+      final double startX = baseX + offset;
       canvas.drawLine(
-        Offset(startX, groundTop + 18),
-        Offset(startX + 26, groundTop + 92),
+        Offset(startX, resources.groundRect.top + 18),
+        Offset(startX + 26, resources.groundRect.top + 92),
         stripePaint,
       );
     }
 
-    final horizonPaint = Paint()
-      ..shader = LinearGradient(
-        colors: [
-          const Color(0xFF38BDF8).withOpacity(0.35),
-          Colors.transparent,
-        ],
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-      ).createShader(Rect.fromLTWH(0, groundTop - 12, size.width, 24));
-    canvas.drawRect(Rect.fromLTWH(0, groundTop - 12, size.width, 24), horizonPaint);
+    canvas.drawRect(resources.horizonRect, resources.horizonPaint);
   }
 
   void _drawPlayer(Canvas canvas) {
@@ -513,4 +490,157 @@ class DrawingPainter extends CustomPainter {
         coins.length != oldDelegate.coins.length ||
         playerPosition != oldDelegate.playerPosition;
   }
+}
+
+class _DrawingResourceCache {
+  final Map<Size, _SizeResources> _cache = <Size, _SizeResources>{};
+
+  _SizeResources resourcesFor(Size size) {
+    return _cache.putIfAbsent(size, () => _SizeResources(size));
+  }
+}
+
+class _SizeResources {
+  _SizeResources(this.size)
+      : backgroundRect = Rect.fromLTWH(0, 0, size.width, size.height),
+        groundRect = Rect.fromLTWH(
+          0,
+          _groundTop,
+          size.width,
+          math.max(0, size.height - _groundTop),
+        ),
+        horizonRect = Rect.fromLTWH(0, _groundTop - 12, size.width, 24),
+        backgroundPaint = Paint(),
+        restBackgroundPaint = Paint(),
+        groundPaint = Paint(),
+        restGroundPaint = Paint(),
+        highlightPaint = Paint(),
+        horizonPaint = Paint(),
+        stripePaint = Paint()
+          ..color = Colors.white.withOpacity(0.08)
+          ..strokeWidth = 4
+          ..strokeCap = StrokeCap.round,
+        starPaint = Paint()
+          ..strokeCap = StrokeCap.round
+          ..strokeWidth = 2,
+        auroraPaints = List.generate(
+          3,
+          (_) => Paint()..maskFilter = const MaskFilter.blur(BlurStyle.normal, 45),
+        ),
+        parallaxPaints = [Paint(), Paint()],
+        parallaxPaths = [Path(), Path()],
+        starBaseXs = _generateStarBaseXs(size.width),
+        parallaxBaseXs = _generateParallaxBaseXs(size.width),
+        stripeBaseXs = _generateStripeBaseXs(size.width) {
+    highlightPaint.shader = LinearGradient(
+      colors: [
+        Colors.white.withOpacity(0.14),
+        Colors.white.withOpacity(0.0),
+      ],
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+    ).createShader(groundRect);
+
+    horizonPaint.shader = LinearGradient(
+      colors: [
+        const Color(0xFF38BDF8).withOpacity(0.35),
+        Colors.transparent,
+      ],
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+    ).createShader(horizonRect);
+  }
+
+  static const double _groundTop = 400.0;
+  static const double stripeSpacing = 80;
+  static const double parallaxStep = 140;
+
+  final Size size;
+  final Rect backgroundRect;
+  final Rect groundRect;
+  final Rect horizonRect;
+  final Paint backgroundPaint;
+  final Paint restBackgroundPaint;
+  final Paint groundPaint;
+  final Paint restGroundPaint;
+  final Paint highlightPaint;
+  final Paint horizonPaint;
+  final Paint stripePaint;
+  final Paint starPaint;
+  final List<Paint> auroraPaints;
+  final List<Paint> parallaxPaints;
+  final List<Path> parallaxPaths;
+  final List<double> starBaseXs;
+  final List<double> parallaxBaseXs;
+  final List<double> stripeBaseXs;
+
+  Paint backgroundPaintFor(bool restWindow) {
+    final gradient =
+        restWindow ? _restBackgroundGradient : _defaultBackgroundGradient;
+    final paint = restWindow ? restBackgroundPaint : backgroundPaint;
+    paint.shader = gradient.createShader(backgroundRect);
+    return paint;
+  }
+
+  Paint groundPaintFor(bool restWindow) {
+    final gradient =
+        restWindow ? _restGroundGradient : _defaultGroundGradient;
+    final paint = restWindow ? restGroundPaint : groundPaint;
+    paint.shader = gradient.createShader(groundRect);
+    return paint;
+  }
+
+  static const LinearGradient _defaultBackgroundGradient = LinearGradient(
+    colors: [Color(0xFF020617), Color(0xFF0B1220), Color(0xFF1D4ED8)],
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    stops: [0.0, 0.45, 1.0],
+  );
+
+  static const LinearGradient _restBackgroundGradient = LinearGradient(
+    colors: [Color(0xFF02131E), Color(0xFF0F2A4E), Color(0xFF34D399)],
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    stops: [0.0, 0.45, 1.0],
+  );
+
+  static const LinearGradient _defaultGroundGradient = LinearGradient(
+    colors: [Color(0xFF0F172A), Color(0xFF0F766E), Color(0xFF22D3EE)],
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+  );
+
+  static const LinearGradient _restGroundGradient = LinearGradient(
+    colors: [Color(0xFF0F4E3B), Color(0xFF22C55E), Color(0xFFA7F3D0)],
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+  );
+}
+
+List<double> _generateStarBaseXs(double width) {
+  final values = <double>[];
+  for (double x = 0; x < width + 140; x += 70) {
+    values.add(x);
+  }
+  return values;
+}
+
+List<double> _generateParallaxBaseXs(double width) {
+  final values = <double>[];
+  for (double x = -_SizeResources.parallaxStep;
+      x <= width + _SizeResources.parallaxStep;
+      x += _SizeResources.parallaxStep) {
+    values.add(x);
+  }
+  return values;
+}
+
+List<double> _generateStripeBaseXs(double width) {
+  final values = <double>[];
+  for (double x = -_SizeResources.stripeSpacing;
+      x < width + _SizeResources.stripeSpacing;
+      x += _SizeResources.stripeSpacing) {
+    values.add(x);
+  }
+  return values;
 }
