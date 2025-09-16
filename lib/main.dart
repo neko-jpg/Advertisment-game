@@ -17,7 +17,15 @@ import 'sound_provider.dart';
 import 'remote_config_provider.dart';
 
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+  final binding = WidgetsFlutterBinding.ensureInitialized();
+  FlutterError.onError = (details) {
+    FlutterError.dumpErrorToConsole(details);
+  };
+  binding.platformDispatcher.onError = (error, stackTrace) {
+    debugPrint('ZonedError: $error');
+    debugPrintStack(stackTrace: stackTrace);
+    return true;
+  };
   AnalyticsProvider analytics;
   var firebaseReady = false;
   try {
