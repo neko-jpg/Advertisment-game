@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'coin_provider.dart';
 import 'line_provider.dart';
 import 'obstacle_provider.dart';
+import 'player_skin.dart';
 
 /// Renders the complete game world, including background elements,
 /// the player avatar, obstacles, coins and drawn platforms.
@@ -14,12 +15,14 @@ class DrawingPainter extends CustomPainter {
     required this.lines,
     required this.obstacles,
     required this.coins,
+    required this.skin,
   });
 
   final Offset playerPosition;
   final List<DrawnLine> lines;
   final List<Obstacle> obstacles;
   final List<Coin> coins;
+  final PlayerSkin skin;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -78,15 +81,15 @@ class DrawingPainter extends CustomPainter {
     const double radius = 20;
     final playerRect = Rect.fromCircle(center: playerPosition, radius: radius);
     final playerPaint = Paint()
-      ..shader = const RadialGradient(
-        colors: [Color(0xFF38BDF8), Color(0xFF1D4ED8)],
+      ..shader = RadialGradient(
+        colors: [skin.primaryColor, skin.secondaryColor],
         center: Alignment.topLeft,
         radius: 1.2,
       ).createShader(playerRect);
     canvas.drawCircle(playerPosition, radius, playerPaint);
 
     final auraPaint = Paint()
-      ..color = const Color(0xFF38BDF8).withOpacity(0.35)
+      ..color = skin.auraColor.withOpacity(0.35)
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12);
     canvas.drawCircle(playerPosition, radius + 12, auraPaint);
   }
@@ -157,7 +160,7 @@ class DrawingPainter extends CustomPainter {
       final t = (1 - age.inMilliseconds / LineProvider.lineLifetime.inMilliseconds)
           .clamp(0.0, 1.0);
       final paint = Paint()
-        ..color = const Color(0xFFA855F7).withOpacity(t)
+        ..color = skin.trailColor.withOpacity(t)
         ..strokeCap = StrokeCap.round
         ..strokeJoin = StrokeJoin.round
         ..strokeWidth = 8

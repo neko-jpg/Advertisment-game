@@ -1,6 +1,5 @@
 
-import 'dart:async';
-import 'dart:math';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 class Obstacle {
@@ -19,70 +18,307 @@ class Obstacle {
 }
 
 class ObstacleProvider with ChangeNotifier {
+  ObstacleProvider({required this.gameWidth});
+
+  static const double _groundY = 360.0;
+  static const double _minSpawnGap = 150.0;
+
   final List<Obstacle> _obstacles = [];
   final double gameWidth;
-  Timer? _spawnTimer;
+  final math.Random _random = math.Random();
 
   double _speed = 5.0;
-  int _nextSpawnTime = 2000;
+  double _spawnCooldownMs = 1200;
+  double _timeSinceStartMs = 0;
+  double _screenWidth = 0;
+  bool _active = false;
+  bool _useIntroSequence = false;
+  final List<_ScheduledPattern> _introQueue = [];
 
   List<Obstacle> get obstacles => _obstacles;
   double get speed => _speed;
 
-  ObstacleProvider({required this.gameWidth});
-
-  void startSpawning() {
-    stopSpawning();
-    _spawnTimer = Timer.periodic(Duration(milliseconds: _nextSpawnTime), (timer) {
-      _spawnObstacle();
-    });
+  void start({required double screenWidth, required bool tutorialMode}) {
+    _screenWidth = screenWidth == 0 ? gameWidth : screenWidth;
+    _active = true;
+    _useIntroSequence = tutorialMode;
+    _spawnCooldownMs = tutorialMode ? 1400 : _spawnDelay();
+    _timeSinceStartMs = 0;
+    _introQueue
+      ..clear()
+      ..addAll(_buildIntroSequence());
   }
 
   void stopSpawning() {
-    _spawnTimer?.cancel();
+    _active = false;
   }
 
-  void _spawnObstacle() {
-    final random = Random();
-    _obstacles.add(Obstacle(
-      x: gameWidth + 50,
-      y: 360, // Position on the floor
-      width: 30 + random.nextDouble() * 40,
-      height: 40,
-    ));
-    notifyListeners();
-  }
+  void update({
+    required double deltaMs,
+    required double screenWidth,
+    required bool tutorialMode,
+  }) {
+    if (!_active) {
+      return;
+    }
 
-  void updateObstacles() {
-    for (var obstacle in _obstacles) {
+    _screenWidth = screenWidth == 0 ? _screenWidth : screenWidth;
+    _timeSinceStartMs += deltaMs;
+    _spawnCooldownMs -= deltaMs;
+
+    for (final obstacle in _obstacles) {
       obstacle.x -= _speed;
     }
-    _obstacles.removeWhere((obstacle) => obstacle.x + obstacle.width < 0);
+    _obstacles.removeWhere((obstacle) => obstacle.x + obstacle.width < -50);
+
+    if (_useIntroSequence && _introQueue.isNotEmpty) {
+      while (_introQueue.isNotEmpty &&
+          _timeSinceStartMs >= _introQueue.first.spawnTimeMs) {
+        _spawnPattern(_introQueue.removeAt(0).pattern);
+      }
+      if (_introQueue.isEmpty || _timeSinceStartMs > 28000) {
+        _useIntroSequence = false;
+        _spawnCooldownMs = 900;
+      }
+    }
+
+    if (!_useIntroSequence && _spawnCooldownMs <= 0) {
+      final pattern = tutorialMode
+          ? _easyPatterns[_random.nextInt(_easyPatterns.length)]
+          : _standardPatterns[_random.nextInt(_standardPatterns.length)];
+      _spawnPattern(pattern);
+      _spawnCooldownMs = _spawnDelay();
+    }
+
     notifyListeners();
   }
 
   void increaseSpeed() {
-      _speed += 0.2;
-      // Optionally, decrease spawn time to make obstacles appear more frequently
-      if (_nextSpawnTime > 1000) {
-          _nextSpawnTime -= 50;
-          stopSpawning();
-          startSpawning();
-      }
-      notifyListeners();
-  }
-
-  void reset() {
-    stopSpawning();
-    _obstacles.clear();
-    _speed = 5.0;
-    _nextSpawnTime = 2000;
+    _speed = math.min(_speed + 0.25, 10.0);
     notifyListeners();
   }
 
-  @override
-  void dispose() {
-    _spawnTimer?.cancel();
-    super.dispose();
+  void reset() {
+    _active = false;
+    _obstacles.clear();
+    _speed = 5.0;
+    _spawnCooldownMs = 1200;
+    _timeSinceStartMs = 0;
+    _introQueue.clear();
+    notifyListeners();
   }
+
+  double _spawnDelay() {
+    final minDelay = 850.0;
+    final maxDelay = 1400.0;
+    return minDelay + _random.nextDouble() * (maxDelay - minDelay);
+  }
+
+  void _spawnPattern(_ObstaclePattern pattern) {
+    final baseX = _computeSpawnBaseX();
+    for (final template in pattern.templates) {
+      _obstacles.add(
+        Obstacle(
+          x: baseX + template.offsetX,
+          y: template.y,
+          width: template.width,
+          height: template.height,
+        ),
+      );
+    }
+  }
+
+  double _computeSpawnBaseX() {
+    if (_obstacles.isEmpty) {
+      return _screenWidth + 40;
+    }
+    final furthest = _obstacles.reduce(
+      (a, b) => a.x > b.x ? a : b,
+    );
+    final safeStart = furthest.x + furthest.width + _minSpawnGap;
+    return math.max(_screenWidth + 40, safeStart);
+  }
+
+  List<_ScheduledPattern> _buildIntroSequence() {
+    return [
+      _ScheduledPattern(
+        spawnTimeMs: 1200,
+        pattern: _ObstaclePattern.single(width: 60, height: 38, y: _groundY),
+      ),
+      _ScheduledPattern(
+        spawnTimeMs: 3200,
+        pattern: _ObstaclePattern.chain(
+          count: 2,
+          spacing: 140,
+          width: 55,
+          height: 40,
+          y: _groundY,
+        ),
+      ),
+      _ScheduledPattern(
+        spawnTimeMs: 6200,
+        pattern: _ObstaclePattern.single(width: 70, height: 60, y: _groundY),
+      ),
+      _ScheduledPattern(
+        spawnTimeMs: 9200,
+        pattern: _ObstaclePattern.chain(
+          count: 3,
+          spacing: 130,
+          width: 45,
+          height: 40,
+          y: _groundY,
+        ),
+      ),
+      _ScheduledPattern(
+        spawnTimeMs: 13200,
+        pattern: _ObstaclePattern.stair(),
+      ),
+      _ScheduledPattern(
+        spawnTimeMs: 18200,
+        pattern: _ObstaclePattern.gap(),
+      ),
+      _ScheduledPattern(
+        spawnTimeMs: 23200,
+        pattern: _ObstaclePattern.single(width: 90, height: 70, y: _groundY),
+      ),
+    ];
+  }
+}
+
+class _ScheduledPattern {
+  _ScheduledPattern({required this.spawnTimeMs, required this.pattern});
+
+  final double spawnTimeMs;
+  final _ObstaclePattern pattern;
+}
+
+class _ObstaclePattern {
+  const _ObstaclePattern(this.templates);
+
+  final List<_ObstacleTemplate> templates;
+
+  factory _ObstaclePattern.single({
+    required double width,
+    required double height,
+    required double y,
+  }) {
+    return _ObstaclePattern([
+      _ObstacleTemplate(offsetX: 0, width: width, height: height, y: y),
+    ]);
+  }
+
+  factory _ObstaclePattern.chain({
+    required int count,
+    required double spacing,
+    required double width,
+    required double height,
+    required double y,
+  }) {
+    return _ObstaclePattern(List.generate(count, (index) {
+      return _ObstacleTemplate(
+        offsetX: index * spacing,
+        width: width,
+        height: height,
+        y: y,
+      );
+    }));
+  }
+
+  factory _ObstaclePattern.stair() {
+    const baseY = _ObstacleProviderPresets.groundY;
+    return _ObstaclePattern([
+      _ObstacleTemplate(offsetX: 0, width: 50, height: 40, y: baseY),
+      _ObstacleTemplate(offsetX: 120, width: 50, height: 70, y: baseY),
+      _ObstacleTemplate(offsetX: 240, width: 50, height: 100, y: baseY),
+    ]);
+  }
+
+  factory _ObstaclePattern.gap() {
+    const baseY = _ObstacleProviderPresets.groundY;
+    return _ObstaclePattern([
+      _ObstacleTemplate(offsetX: 0, width: 60, height: 40, y: baseY),
+      _ObstacleTemplate(offsetX: 220, width: 60, height: 40, y: baseY),
+    ]);
+  }
+}
+
+class _ObstacleTemplate {
+  const _ObstacleTemplate({
+    required this.offsetX,
+    required this.width,
+    required this.height,
+    required this.y,
+  });
+
+  final double offsetX;
+  final double width;
+  final double height;
+  final double y;
+}
+
+class _ObstacleProviderPresets {
+  static const double groundY = 360.0;
+}
+
+const List<_ObstaclePattern> _easyPatterns = [
+  _ObstaclePattern.single(width: 55, height: 40, y: _ObstacleProviderPresets.groundY),
+  _ObstaclePattern.chain(
+    count: 2,
+    spacing: 160,
+    width: 45,
+    height: 38,
+    y: _ObstacleProviderPresets.groundY,
+  ),
+  _ObstaclePattern.gap(),
+];
+
+const List<_ObstaclePattern> _standardPatterns = [
+  _ObstaclePattern.single(width: 70, height: 60, y: _ObstacleProviderPresets.groundY),
+  _ObstaclePattern.chain(
+    count: 3,
+    spacing: 120,
+    width: 40,
+    height: 40,
+    y: _ObstacleProviderPresets.groundY,
+  ),
+  _ObstaclePattern.stair(),
+  _ObstaclePattern(
+    [
+      _ObstacleTemplate(
+        offsetX: 0,
+        width: 50,
+        height: 40,
+        y: _ObstacleProviderPresets.groundY,
+      ),
+      _ObstacleTemplate(
+        offsetX: 160,
+        width: 60,
+        height: 90,
+        y: _ObstacleProviderPresets.groundY,
+      ),
+    ],
+  ),
+  _ObstaclePattern(
+    [
+      _ObstacleTemplate(
+        offsetX: 0,
+        width: 60,
+        height: 40,
+        y: _ObstacleProviderPresets.groundY,
+      ),
+      _ObstacleTemplate(
+        offsetX: 140,
+        width: 60,
+        height: 40,
+        y: _ObstacleProviderPresets.groundY,
+      ),
+      _ObstacleTemplate(
+        offsetX: 280,
+        width: 60,
+        height: 40,
+        y: _ObstacleProviderPresets.groundY,
+      ),
+    ],
+  ),
+];
 }

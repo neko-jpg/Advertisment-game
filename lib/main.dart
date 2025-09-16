@@ -10,6 +10,7 @@ import 'ad_provider.dart';
 import 'coin_provider.dart';
 import 'sound_provider.dart';
 import 'game_screen.dart';
+import 'meta_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -76,6 +77,7 @@ class _GameScreenWrapperState extends State<GameScreenWrapper> with TickerProvid
     return MultiProvider(
       providers: [
         Provider(create: (_) => SoundProvider()), // Add SoundProvider
+        ChangeNotifierProvider(create: (_) => MetaProvider()),
         ChangeNotifierProvider(create: (_) => AdProvider()),
         ChangeNotifierProvider(create: (_) => LineProvider()),
         ChangeNotifierProvider(create: (_) => ObstacleProvider(gameWidth: gameWidth)),
