@@ -5,6 +5,8 @@ class GameConstants {
 
   static const double playerStartX = 100.0;
   static const double playerStartY = 380.0;
+  static const double gravityPerFrame = 0.5;
+  static const double jumpVelocity = -12.0;
   static const double baseCoyoteDurationMs = 120.0;
   static const double jumpBufferDurationMs = 100.0;
   static const double restIntervalMs = 30000.0;

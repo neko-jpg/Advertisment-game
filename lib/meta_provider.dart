@@ -414,80 +414,117 @@ class MetaProvider with ChangeNotifier {
     }
   }
 
-  Future<void> _loadFromStorage() async {
-    _prefs = await SharedPreferences.getInstance();
-    _totalCoins = _prefs?.getInt(_coinsKey) ?? 0;
-    final owned = _prefs?.getStringList(_ownedSkinsKey);
-    if (owned != null && owned.isNotEmpty) {
-      _ownedSkinIds
-        ..clear()
-        ..addAll(owned);
-    }
-    _ownedSkinIds.add('default');
-
-    final selected = _prefs?.getString(_selectedSkinKey);
-    if (selected != null && _ownedSkinIds.contains(selected)) {
-      _selectedSkinId = selected;
-    }
-
-    final upgradeRaw = _prefs?.getString(_upgradeLevelsKey);
-    if (upgradeRaw != null) {
-      final decoded = json.decode(upgradeRaw) as Map<String, dynamic>;
-      decoded.forEach((key, value) {
-        final type = UpgradeType.values.firstWhere(
-          (element) => describeEnum(element) == key,
-          orElse: () => UpgradeType.inkRegen,
-        );
-        _upgradeLevels[type] = value as int;
+  void _resetToDefaults() {
+    _prefs = null;
+    _totalCoins = 0;
+    _ownedSkinIds
+      ..clear()
+      ..add('default');
+    _selectedSkinId = 'default';
+    _upgradeLevels
+      ..clear()
+      ..addAll({
+        UpgradeType.inkRegen: 0,
+        UpgradeType.revive: 0,
+        UpgradeType.coyote: 0,
       });
-    }
+    _leftHandedMode = false;
+    _hapticStrength = 1.0;
+    _colorBlindMode = false;
+    _screenShake = true;
+    _oneTapMode = false;
+    _dailyMissions = [];
+    _missionDate = null;
+    _loginStreak = 0;
+    _lastLoginAt = null;
+    _nextLoginClaimAt = null;
+    _gachaPityCounter = 0;
+    _freeGachaAvailable = true;
+    _hasShownLeftHandPrompt = false;
+    _queuedBoost = null;
+  }
 
-    final settingsRaw = _prefs?.getString(_settingsKey);
-    if (settingsRaw != null) {
-      final decoded = json.decode(settingsRaw) as Map<String, dynamic>;
-      _leftHandedMode = decoded['leftHanded'] as bool? ?? _leftHandedMode;
-      _hapticStrength =
-          (decoded['hapticStrength'] as num?)?.toDouble() ?? _hapticStrength;
-      _colorBlindMode = decoded['colorBlind'] as bool? ?? _colorBlindMode;
-      _screenShake = decoded['screenShake'] as bool? ?? _screenShake;
-      _oneTapMode = decoded['oneTapMode'] as bool? ?? _oneTapMode;
-    }
+  Future<void> _loadFromStorage() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _prefs = prefs;
+      _totalCoins = prefs.getInt(_coinsKey) ?? 0;
+      final owned = prefs.getStringList(_ownedSkinsKey);
+      if (owned != null && owned.isNotEmpty) {
+        _ownedSkinIds
+          ..clear()
+          ..addAll(owned);
+      }
+      _ownedSkinIds.add('default');
 
-    final missionRaw = _prefs?.getString(_dailyMissionDataKey);
-    if (missionRaw != null) {
-      final list = json.decode(missionRaw) as List<dynamic>;
-      _dailyMissions =
-          list
-              .map(
-                (item) => DailyMission.fromJson(item as Map<String, dynamic>),
-              )
-              .toList();
-    }
-    final missionDateRaw = _prefs?.getString(_dailyMissionDateKey);
-    if (missionDateRaw != null) {
-      _missionDate = DateTime.tryParse(missionDateRaw);
-    }
+      final selected = prefs.getString(_selectedSkinKey);
+      if (selected != null && _ownedSkinIds.contains(selected)) {
+        _selectedSkinId = selected;
+      }
 
-    final loginStreak = _prefs?.getInt(_loginStreakKey);
-    if (loginStreak != null) {
-      _loginStreak = loginStreak;
-    }
-    final lastLogin = _prefs?.getString(_lastLoginKey);
-    if (lastLogin != null) {
-      _lastLoginAt = DateTime.tryParse(lastLogin);
-    }
-    final nextLogin = _prefs?.getString(_nextLoginKey);
-    if (nextLogin != null) {
-      _nextLoginClaimAt = DateTime.tryParse(nextLogin);
-    }
+      final upgradeRaw = prefs.getString(_upgradeLevelsKey);
+      if (upgradeRaw != null) {
+        final decoded = json.decode(upgradeRaw) as Map<String, dynamic>;
+        decoded.forEach((key, value) {
+          final type = UpgradeType.values.firstWhere(
+            (element) => describeEnum(element) == key,
+            orElse: () => UpgradeType.inkRegen,
+          );
+          _upgradeLevels[type] = value as int;
+        });
+      }
 
-    _gachaPityCounter = _prefs?.getInt(_gachaPityKey) ?? 0;
-    _freeGachaAvailable = _prefs?.getBool(_freeGachaKey) ?? true;
-    _hasShownLeftHandPrompt = _prefs?.getBool(_leftHandPromptKey) ?? false;
+      final settingsRaw = prefs.getString(_settingsKey);
+      if (settingsRaw != null) {
+        final decoded = json.decode(settingsRaw) as Map<String, dynamic>;
+        _leftHandedMode = decoded['leftHanded'] as bool? ?? _leftHandedMode;
+        _hapticStrength =
+            (decoded['hapticStrength'] as num?)?.toDouble() ?? _hapticStrength;
+        _colorBlindMode = decoded['colorBlind'] as bool? ?? _colorBlindMode;
+        _screenShake = decoded['screenShake'] as bool? ?? _screenShake;
+        _oneTapMode = decoded['oneTapMode'] as bool? ?? _oneTapMode;
+      }
 
-    await refreshDailyMissionsIfNeeded();
-    _initialized = true;
-    notifyListeners();
+      final missionRaw = prefs.getString(_dailyMissionDataKey);
+      if (missionRaw != null) {
+        final list = json.decode(missionRaw) as List<dynamic>;
+        _dailyMissions =
+            list
+                .map(
+                  (item) => DailyMission.fromJson(item as Map<String, dynamic>),
+                )
+                .toList();
+      }
+      final missionDateRaw = prefs.getString(_dailyMissionDateKey);
+      if (missionDateRaw != null) {
+        _missionDate = DateTime.tryParse(missionDateRaw);
+      }
+
+      final loginStreak = prefs.getInt(_loginStreakKey);
+      if (loginStreak != null) {
+        _loginStreak = loginStreak;
+      }
+      final lastLogin = prefs.getString(_lastLoginKey);
+      if (lastLogin != null) {
+        _lastLoginAt = DateTime.tryParse(lastLogin);
+      }
+      final nextLogin = prefs.getString(_nextLoginKey);
+      if (nextLogin != null) {
+        _nextLoginClaimAt = DateTime.tryParse(nextLogin);
+      }
+
+      _gachaPityCounter = prefs.getInt(_gachaPityKey) ?? 0;
+      _freeGachaAvailable = prefs.getBool(_freeGachaKey) ?? true;
+      _hasShownLeftHandPrompt = prefs.getBool(_leftHandPromptKey) ?? false;
+    } catch (error, stackTrace) {
+      debugPrint('MetaProvider storage load failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      _resetToDefaults();
+    } finally {
+      await refreshDailyMissionsIfNeeded();
+      _initialized = true;
+      notifyListeners();
+    }
   }
 
   Future<void> _saveCoins() async {
