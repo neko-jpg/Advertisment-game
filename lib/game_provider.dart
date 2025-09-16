@@ -62,6 +62,7 @@ class GameProvider with ChangeNotifier {
   final List<RunStats> _recentRuns = [];
   int _accidentStreak = 0;
   Duration _nextRunGrace = Duration.zero;
+  double _scoreAccumulator = 0.0;
   _DifficultyTuning _activeDifficulty = const _DifficultyTuning(
     speedMultiplier: 1.0,
     densityMultiplier: 1.0,
@@ -150,6 +151,7 @@ class GameProvider with ChangeNotifier {
     _revivesUsedThisRun = 0;
     _invulnerabilityWarningShown = false;
     _invulnerabilityMs = isTutorialActive ? 3500.0 : 1500.0;
+    _scoreAccumulator = 0.0;
 
     metaProvider.refreshDailyMissionsIfNeeded();
 
@@ -203,6 +205,7 @@ class GameProvider with ChangeNotifier {
       deltaMs = math.min(200.0, math.max(0.0, elapsedMs));
     }
     _lastFrameTimestamp = now;
+    final double dt = deltaMs / 16.0;
 
     _jumpBufferTimerMs = math.max(0.0, _jumpBufferTimerMs - deltaMs);
     _coyoteTimerMs = math.max(0.0, _coyoteTimerMs - deltaMs);
@@ -242,8 +245,8 @@ class GameProvider with ChangeNotifier {
     );
 
     // --- Player physics ---
-    _playerYSpeed += 0.5; // Gravity
-    _playerY += _playerYSpeed;
+    _playerYSpeed += 0.5 * dt; // Gravity scaled by delta
+    _playerY += _playerYSpeed * dt;
 
     if (lineProvider.lines.isNotEmpty) {
       _drawTimeMsThisRun += deltaMs.toInt();
@@ -303,8 +306,17 @@ class GameProvider with ChangeNotifier {
     final Rect playerRect = Rect.fromLTWH(playerX - 15, playerY - 15, 30, 30);
 
     // --- Coin and Obstacle updates ---
-    coinProvider.maybeSpawnCoin(_screenSize.width, _screenSize.height);
-    coinProvider.update(obstacleProvider.speed, playerRect, _screenSize.width);
+    coinProvider.maybeSpawnCoin(
+      deltaMs: deltaMs,
+      screenWidth: _screenSize.width,
+      screenHeight: _screenSize.height,
+    );
+    coinProvider.update(
+      deltaMs: deltaMs,
+      scrollSpeed: obstacleProvider.speed,
+      playerRect: playerRect,
+      screenWidth: _screenSize.width,
+    );
 
     // Play coin sound if a coin was collected
     if (coinProvider.coinsCollected > initialCoins) {
@@ -355,7 +367,11 @@ class GameProvider with ChangeNotifier {
     }
 
     _elapsedRunMs += deltaMs;
-    _score++;
+    _scoreAccumulator += dt;
+    while (_scoreAccumulator >= 1.0) {
+      _score++;
+      _scoreAccumulator -= 1.0;
+    }
     notifyListeners();
   }
 
@@ -486,6 +502,7 @@ class GameProvider with ChangeNotifier {
     _restWindowActive = false;
     coinProvider.setRestWindowActive(false);
     obstacleProvider.setRestMode(false);
+    _scoreAccumulator = 0.0;
     notifyListeners();
   }
 

@@ -1,5 +1,5 @@
 
-import 'dart:math';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
@@ -17,10 +17,10 @@ class CoinProvider with ChangeNotifier {
 
   final List<Coin> _coins = [];
   int _coinsCollected = 0;
-  final Random _random = Random();
+  final math.Random _random = math.Random();
 
-  /// Base probability (0-1) per frame to spawn a new coin.
-  static const double _baseSpawnChance = 0.02;
+  /// Target spawn rate in coins per second at baseline difficulty.
+  static const double _baseSpawnRatePerSecond = 1.2;
 
   double _spawnMultiplier = 1.0;
   double _restSpawnBonus = 1.5;
@@ -47,21 +47,38 @@ class CoinProvider with ChangeNotifier {
   }
 
   // Periodically spawn new coins off-screen to the right.
-  void maybeSpawnCoin(double screenWidth, double screenHeight) {
-    final effectiveChance = _baseSpawnChance *
+  void maybeSpawnCoin({
+    required double deltaMs,
+    required double screenWidth,
+    required double screenHeight,
+  }) {
+    if (deltaMs <= 0) {
+      return;
+    }
+    final double dtSeconds = deltaMs / 1000.0;
+    final double spawnRate = _baseSpawnRatePerSecond *
         _spawnMultiplier *
         (_inRestWindow ? _restSpawnBonus : 1.0);
-    if (_random.nextDouble() < effectiveChance) {
-      final yPosition = _random.nextDouble() * (screenHeight - 100) + 50;
+    final double spawnProbability = 1 - math.exp(-spawnRate * dtSeconds);
+    if (_random.nextDouble() < spawnProbability) {
+      final yPosition =
+          _random.nextDouble() * (screenHeight - 100).clamp(0.0, screenHeight) + 50;
       _coins.add(Coin(position: Offset(screenWidth + 50, yPosition)));
       notifyListeners();
     }
   }
 
   // Update coin positions and check for collisions.
-  void update(double speed, Rect playerRect, double screenWidth) {
+  void update({
+    required double deltaMs,
+    required double scrollSpeed,
+    required Rect playerRect,
+    required double screenWidth,
+  }) {
+    final double dt = deltaMs / 16.0;
+    final double displacement = scrollSpeed * dt;
     for (var coin in _coins) {
-      coin.position = coin.position.translate(-speed, 0);
+      coin.position = coin.position.translate(-displacement, 0);
     }
 
     final collectedCoins = <Coin>[];

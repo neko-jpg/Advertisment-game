@@ -79,21 +79,33 @@ class AdProvider with ChangeNotifier {
     );
   }
 
-  void showRewardAd({required VoidCallback onReward}) {
-    if (_rewardedAd == null) return;
+  void showRewardAd({
+    required VoidCallback onReward,
+    VoidCallback? onAdOpened,
+    VoidCallback? onAdClosed,
+  }) {
+    final ad = _rewardedAd;
+    if (ad == null) {
+      return;
+    }
 
-    _rewardedAd!.fullScreenContentCallback = FullScreenContentCallback(
+    ad.fullScreenContentCallback = FullScreenContentCallback(
+      onAdShowedFullScreenContent: (ad) {
+        onAdOpened?.call();
+      },
       onAdDismissedFullScreenContent: (ad) {
         ad.dispose();
         loadRewardAd();
+        onAdClosed?.call();
       },
       onAdFailedToShowFullScreenContent: (ad, error) {
         ad.dispose();
         loadRewardAd();
+        onAdClosed?.call();
       },
     );
 
-    _rewardedAd!.show(onUserEarnedReward: (ad, reward) {
+    ad.show(onUserEarnedReward: (ad, reward) {
       onReward();
     });
     _rewardedAd = null;
@@ -112,6 +124,8 @@ class AdProvider with ChangeNotifier {
   void maybeShowInterstitial({
     required Duration lastRunDuration,
     required VoidCallback onClosed,
+    VoidCallback? onAdOpened,
+    VoidCallback? onAdClosed,
   }) {
     final bool skipForFirstRuns =
         _runsCompleted < _config.minimumRunsBeforeInterstitial;
@@ -127,16 +141,21 @@ class AdProvider with ChangeNotifier {
         elapsedSinceLastInterstitial && accumulatedTimeReached &&
         _interstitialAd != null) {
       _interstitialAd!.fullScreenContentCallback = FullScreenContentCallback(
+        onAdShowedFullScreenContent: (ad) {
+          onAdOpened?.call();
+        },
         onAdDismissedFullScreenContent: (ad) {
           ad.dispose();
           _lastInterstitialShownAt = DateTime.now();
           _timeSinceLastInterstitial = Duration.zero;
           loadInterstitialAd();
+          onAdClosed?.call();
           onClosed();
         },
         onAdFailedToShowFullScreenContent: (ad, error) {
           ad.dispose();
           loadInterstitialAd();
+          onAdClosed?.call();
           onClosed();
         },
       );
@@ -145,6 +164,7 @@ class AdProvider with ChangeNotifier {
       if (_interstitialAd == null) {
         loadInterstitialAd();
       }
+      onAdClosed?.call();
       onClosed();
     }
   }
