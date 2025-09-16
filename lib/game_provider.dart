@@ -14,6 +14,7 @@ import 'line_provider.dart';
 import 'meta_provider.dart';
 import 'obstacle_provider.dart';
 import 'sound_provider.dart';
+import 'remote_config_provider.dart';
 
 enum GameState { ready, running, dead, result }
 
@@ -73,6 +74,30 @@ class GameProvider with ChangeNotifier {
   );
   UpgradeSnapshot _activeUpgrades =
       const UpgradeSnapshot(inkRegenMultiplier: 1, maxRevives: 1, coyoteBonusMs: 0);
+  final ValueNotifier<int> _worldTick = ValueNotifier<int>(0);
+  final ValueNotifier<int> _hudTick = ValueNotifier<int>(0);
+  final ValueNotifier<GameToast?> _toastNotifier = ValueNotifier<GameToast?>(null);
+  Timer? _toastTimer;
+  DifficultyRemoteConfig _remoteDifficulty = const DifficultyRemoteConfig(
+    baseSpeedMultiplier: 1.0,
+    speedRampIntervalScore: 380,
+    speedRampIncrease: 0.35,
+    maxSpeedMultiplier: 2.2,
+    targetSessionSeconds: 50,
+    tutorialSafeWindowMs: 30000,
+    emergencyInkFloor: 14,
+  );
+  int _nextSpeedRampScore = 380;
+  double _currentSpeedMultiplier = 1.0;
+  double _speedRampIncrease = 0.35;
+  double _maxSpeedMultiplier = 2.2;
+  bool _emergencyInkAvailable = false;
+  int _lastRunBonusCoins = 0;
+  int _nextBonusScore = 400;
+  int _nextBonusReward = 20;
+  double _lastRestProgressNotified = 0.0;
+  RunBoost? _activeRunBoost;
+  double _boostRemainingMs = 0.0;
 
   // Providers
   final AnalyticsProvider analytics;
@@ -81,6 +106,7 @@ class GameProvider with ChangeNotifier {
   ObstacleProvider obstacleProvider;
   CoinProvider coinProvider;
   MetaProvider metaProvider;
+  RemoteConfigProvider remoteConfigProvider;
   SoundProvider soundProvider;
 
   GameProvider({
@@ -90,10 +116,12 @@ class GameProvider with ChangeNotifier {
     required this.obstacleProvider,
     required this.coinProvider,
     required this.metaProvider,
+    required this.remoteConfigProvider,
     required this.soundProvider,
     required TickerProvider vsync,
   }) {
     _ticker = vsync.createTicker(_gameLoop);
+    _applyRemoteDifficulty(remoteConfigProvider.difficulty);
   }
 
   // Getters
@@ -115,9 +143,76 @@ class GameProvider with ChangeNotifier {
   double get restWindowProgress =>
       _restWindowActive ? (_restWindowElapsedMs / _restDurationMs).clamp(0.0, 1.0) : 0.0;
   bool get canRevive => _revivesUsedThisRun < _activeUpgrades.maxRevives;
+  ValueListenable<int> get worldListenable => _worldTick;
+  ValueListenable<int> get hudListenable => _hudTick;
+  ValueListenable<GameToast?> get toastListenable => _toastNotifier;
+  int get lastRunBonusCoins => _lastRunBonusCoins;
+  int get nextScoreBonusTarget => _nextBonusScore;
+  int get nextScoreBonusReward => _nextBonusReward;
+  int get worldFrame => _worldTick.value;
+  bool get isBoostActive => _activeRunBoost != null && _boostRemainingMs > 0;
+  double get boostRemainingSeconds => (_boostRemainingMs / 1000).clamp(0.0, 999.0);
+  double get boostCoinMultiplier => _activeRunBoost?.coinMultiplier ?? 1.0;
+  double get boostInkMultiplier => _activeRunBoost?.inkRegenMultiplier ?? 1.0;
 
   static const double _restIntervalMs = 30000.0;
   static const double _restDurationMs = 6000.0;
+
+  void _applyRemoteDifficulty(DifficultyRemoteConfig config) {
+    _remoteDifficulty = config;
+    _speedRampIncrease = config.speedRampIncrease;
+    _maxSpeedMultiplier = config.maxSpeedMultiplier;
+    _nextSpeedRampScore = config.speedRampIntervalScore;
+    _currentSpeedMultiplier =
+        (_activeDifficulty.speedMultiplier * config.baseSpeedMultiplier)
+            .clamp(0.6, _maxSpeedMultiplier);
+    _nextBonusScore = ((score ~/ 400) + 1) * 400;
+    _nextBonusReward = _predictBonusForScore(_nextBonusScore);
+  }
+
+  void _markWorldDirty() {
+    _worldTick.value++;
+  }
+
+  void _markHudDirty() {
+    _hudTick.value++;
+  }
+
+  void _pushToast(GameToast toast) {
+    _toastTimer?.cancel();
+    _toastNotifier.value = toast;
+    _toastTimer = Timer(toast.duration, () {
+      if (_toastNotifier.value == toast) {
+        _toastNotifier.value = null;
+      }
+    });
+  }
+
+  int _bonusRewardForTier(int tier) {
+    if (tier <= 0) {
+      return 0;
+    }
+    return 20 + (tier - 1) * 10;
+  }
+
+  int _resolveScoreBonus(int score) {
+    final tier = score ~/ 400;
+    if (tier <= 0) {
+      return 0;
+    }
+    return _bonusRewardForTier(tier);
+  }
+
+  int _predictBonusForScore(int score) {
+    final tier = (score / 400).ceil();
+    return _bonusRewardForTier(tier);
+  }
+
+  void _updateNextBonusTarget(int score) {
+    final nextTier = (score ~/ 400) + 1;
+    _nextBonusScore = nextTier * 400;
+    _nextBonusReward = _predictBonusForScore(_nextBonusScore);
+  }
 
   void setScreenSize(Size size) {
     if (_screenSize == size) {
@@ -144,6 +239,7 @@ class GameProvider with ChangeNotifier {
     _restWindowElapsedMs = 0.0;
     _restWindowActive = false;
     obstacleProvider.setRestMode(false);
+    _lastRestProgressNotified = 0.0;
     _didJumpThisRun = false;
     _didDrawLineThisRun = false;
     _hasBankedRewards = false;
@@ -156,11 +252,19 @@ class GameProvider with ChangeNotifier {
     _invulnerabilityWarningShown = false;
     _invulnerabilityMs = isTutorialActive ? 3500.0 : 1500.0;
     _scoreAccumulator = 0.0;
+    _lastRunBonusCoins = 0;
+    _emergencyInkAvailable = true;
 
     metaProvider.refreshDailyMissionsIfNeeded();
+    final RunBoost? boost = metaProvider.consumeQueuedBoost();
+    _activeRunBoost = boost;
+    _boostRemainingMs = boost?.duration.inMilliseconds.toDouble() ?? 0.0;
 
     lineProvider
-      ..configureUpgrades(regenMultiplier: _activeUpgrades.inkRegenMultiplier)
+      ..configureUpgrades(
+        regenMultiplier:
+            _activeUpgrades.inkRegenMultiplier * (boost?.inkRegenMultiplier ?? 1.0),
+      )
       ..clearAllLines();
     obstacleProvider.reset();
     coinProvider
@@ -168,16 +272,32 @@ class GameProvider with ChangeNotifier {
       ..configureSpawn(multiplier: 1.0);
 
     _activeDifficulty = _evaluateDifficulty();
+    _applyRemoteDifficulty(_remoteDifficulty);
+    _currentSpeedMultiplier = (_activeDifficulty.speedMultiplier *
+            _remoteDifficulty.baseSpeedMultiplier)
+        .clamp(0.6, _maxSpeedMultiplier);
+    if (isTutorialActive) {
+      _currentSpeedMultiplier = _currentSpeedMultiplier.clamp(0.6, 0.85);
+    }
+    _nextSpeedRampScore = _remoteDifficulty.speedRampIntervalScore;
     final startGrace = _nextRunGrace;
     _nextRunGrace = Duration.zero;
 
     obstacleProvider.configureDifficulty(
-      speedMultiplier: _activeDifficulty.speedMultiplier,
+      speedMultiplier: _currentSpeedMultiplier,
       densityMultiplier: _activeDifficulty.densityMultiplier,
       safeWindow: _activeDifficulty.safeWindowPx,
       startGrace: startGrace,
     );
+    obstacleProvider.configureTutorialWindow(
+      durationMs: _remoteDifficulty.tutorialSafeWindowMs,
+    );
     coinProvider.configureSpawn(multiplier: _activeDifficulty.coinMultiplier);
+    if (boost != null) {
+      coinProvider.configureSpawn(
+        multiplier: _activeDifficulty.coinMultiplier * boost.coinMultiplier,
+      );
+    }
     coinProvider.setRestWindowActive(false);
 
     obstacleProvider.start(
@@ -201,6 +321,7 @@ class GameProvider with ChangeNotifier {
     _ticker!.start();
 
     notifyListeners();
+    _markHudDirty();
   }
 
   void _gameLoop(Duration elapsed) {
@@ -244,12 +365,60 @@ class GameProvider with ChangeNotifier {
     if (restBefore != _restWindowActive) {
       obstacleProvider.setRestMode(_restWindowActive);
       coinProvider.setRestWindowActive(_restWindowActive);
+      _lastRestProgressNotified = 0.0;
+      _markHudDirty();
+      _pushToast(
+        GameToast(
+          message: _restWindowActive
+              ? 'Rest zone — ink regen boosted'
+              : 'Speed resumes! Stay sharp',
+          icon: _restWindowActive
+              ? Icons.self_improvement_rounded
+              : Icons.flash_on_rounded,
+          color: _restWindowActive
+              ? const Color(0xFF38BDF8)
+              : const Color(0xFFF97316),
+        ),
+      );
+    }
+
+    if (_activeRunBoost != null) {
+      _boostRemainingMs = math.max(0.0, _boostRemainingMs - deltaMs);
+      _markHudDirty();
+      if (_boostRemainingMs <= 0) {
+        _activeRunBoost = null;
+        coinProvider.configureSpawn(multiplier: _activeDifficulty.coinMultiplier);
+        lineProvider.configureUpgrades(
+          regenMultiplier: _activeUpgrades.inkRegenMultiplier,
+        );
+        _pushToast(
+          const GameToast(
+            message: 'Boost expired',
+            icon: Icons.bolt_outlined,
+            color: Color(0xFFFACC15),
+          ),
+        );
+        _markHudDirty();
+      }
     }
 
     final initialCoins = coinProvider.coinsCollected;
 
     // --- Updates ---
     lineProvider.updateLineLifetimes();
+    if (_emergencyInkAvailable &&
+        lineProvider.grantEmergencyInk(_remoteDifficulty.emergencyInkFloor)) {
+      _emergencyInkAvailable = false;
+      _pushToast(
+        const GameToast(
+          message: 'Auto-refill deployed',
+          icon: Icons.water_drop_rounded,
+          color: Color(0xFF22C55E),
+          duration: Duration(milliseconds: 1800),
+        ),
+      );
+      _markHudDirty();
+    }
     obstacleProvider.update(
       deltaMs: deltaMs,
       screenWidth: _screenSize.width,
@@ -257,6 +426,13 @@ class GameProvider with ChangeNotifier {
       playerX: _playerX,
       restWindow: _restWindowActive,
     );
+    if (_restWindowActive) {
+      final progress = restWindowProgress;
+      if ((progress - _lastRestProgressNotified).abs() >= 0.05) {
+        _lastRestProgressNotified = progress;
+        _markHudDirty();
+      }
+    }
 
     // --- Player physics ---
     _playerYSpeed += 0.5 * dt; // Gravity scaled by delta
@@ -269,6 +445,9 @@ class GameProvider with ChangeNotifier {
     bool onGround = false;
     // Check for collision with drawn lines
     for (final line in lineProvider.lines) {
+      if (_playerX < line.minX - 24 || _playerX > line.maxX + 24) {
+        continue;
+      }
       for (int i = 0; i < line.points.length - 1; i++) {
         final Offset p1 = line.points[i];
         final Offset p2 = line.points[i + 1];
@@ -372,21 +551,37 @@ class GameProvider with ChangeNotifier {
       }
     }
     if (collisionWarning) {
-      notifyListeners();
+      _markHudDirty();
     }
-    
+
     // --- Difficulty Curve ---
-    if (_score > 0 && _score % 500 == 0) {
-      obstacleProvider.increaseSpeed();
+    if (_score >= _nextSpeedRampScore) {
+      _currentSpeedMultiplier =
+          (_currentSpeedMultiplier + _speedRampIncrease).clamp(0.6, _maxSpeedMultiplier);
+      obstacleProvider.setSpeedMultiplier(_currentSpeedMultiplier);
+      _nextSpeedRampScore += _remoteDifficulty.speedRampIntervalScore;
+      _pushToast(
+        const GameToast(
+          message: 'Speed up!',
+          icon: Icons.speed_rounded,
+          color: Color(0xFFFB7185),
+        ),
+      );
+      _markHudDirty();
     }
 
     _elapsedRunMs += deltaMs;
     _scoreAccumulator += dt;
+    int scoreIncrements = 0;
     while (_scoreAccumulator >= 1.0) {
       _score++;
+      scoreIncrements++;
       _scoreAccumulator -= 1.0;
     }
-    notifyListeners();
+    if (scoreIncrements > 0) {
+      _markHudDirty();
+    }
+    _markWorldDirty();
   }
 
   void revivePlayer() {
@@ -478,6 +673,11 @@ class GameProvider with ChangeNotifier {
     if (stats.coins > 0) {
       await metaProvider.addCoins(stats.coins);
     }
+    _lastRunBonusCoins = _resolveScoreBonus(stats.score);
+    if (_lastRunBonusCoins > 0) {
+      await metaProvider.addCoins(_lastRunBonusCoins);
+    }
+    _updateNextBonusTarget(stats.score);
     metaProvider.applyRunStats(stats);
     final completedAfter = metaProvider.dailyMissions
         .where((mission) => mission.completed)
@@ -517,6 +717,7 @@ class GameProvider with ChangeNotifier {
       ),
     );
     _hasBankedRewards = true;
+    _markHudDirty();
   }
 
   void resetGame() {
@@ -543,6 +744,8 @@ class GameProvider with ChangeNotifier {
     coinProvider.setRestWindowActive(false);
     obstacleProvider.setRestMode(false);
     _scoreAccumulator = 0.0;
+    _activeRunBoost = null;
+    _boostRemainingMs = 0.0;
     notifyListeners();
   }
 
@@ -627,18 +830,27 @@ class GameProvider with ChangeNotifier {
     ObstacleProvider obstacle,
     CoinProvider coin,
     MetaProvider meta,
+    RemoteConfigProvider remote,
   ) {
     adProvider = ad;
     lineProvider = line;
     obstacleProvider = obstacle;
     coinProvider = coin;
     metaProvider = meta;
+    remoteConfigProvider = remote;
+    _applyRemoteDifficulty(remote.difficulty);
+    if (_gameState == GameState.running) {
+      _currentSpeedMultiplier =
+          _currentSpeedMultiplier.clamp(0.6, _maxSpeedMultiplier);
+      obstacleProvider.setSpeedMultiplier(_currentSpeedMultiplier);
+    }
   }
 
   @override
   void dispose() {
     _ticker?.dispose();
     soundProvider.dispose();
+    _toastTimer?.cancel();
     super.dispose();
   }
 }

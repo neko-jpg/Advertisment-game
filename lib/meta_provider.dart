@@ -24,6 +24,8 @@ class MetaProvider with ChangeNotifier {
   static const _lastLoginKey = 'meta_last_login';
   static const _nextLoginKey = 'meta_next_login';
   static const _gachaPityKey = 'meta_gacha_pity';
+  static const _freeGachaKey = 'meta_free_gacha_available';
+  static const _leftHandPromptKey = 'meta_left_prompt_seen';
 
   final List<PlayerSkin> _skins = kDefaultSkins;
   final Set<String> _ownedSkinIds = {'default'};
@@ -42,6 +44,7 @@ class MetaProvider with ChangeNotifier {
   double _hapticStrength = 1.0;
   bool _colorBlindMode = false;
   bool _screenShake = true;
+  bool _oneTapMode = false;
 
   List<DailyMission> _dailyMissions = [];
   DateTime? _missionDate;
@@ -51,6 +54,9 @@ class MetaProvider with ChangeNotifier {
   DateTime? _nextLoginClaimAt;
 
   int _gachaPityCounter = 0;
+  bool _freeGachaAvailable = true;
+  bool _hasShownLeftHandPrompt = false;
+  RunBoost? _queuedBoost;
 
   bool get isReady => _initialized;
   int get totalCoins => _totalCoins;
@@ -71,6 +77,9 @@ class MetaProvider with ChangeNotifier {
   double get hapticStrength => _hapticStrength;
   bool get colorBlindMode => _colorBlindMode;
   bool get screenShakeEnabled => _screenShake;
+  bool get oneTapMode => _oneTapMode;
+  bool get hasShownLeftHandPrompt => _hasShownLeftHandPrompt;
+  bool get canClaimFreeGacha => _freeGachaAvailable;
 
   UpgradeSnapshot get upgradeSnapshot => UpgradeSnapshot(
         inkRegenMultiplier: 1.0 + upgradeLevel(UpgradeType.inkRegen) * 0.12,
@@ -206,7 +215,8 @@ class MetaProvider with ChangeNotifier {
   }
 
   Future<GachaResult> pullGacha({required bool viaAd}) async {
-    if (!viaAd) {
+    final bool useFreeRoll = _freeGachaAvailable && !viaAd;
+    if (!viaAd && !useFreeRoll) {
       const coinCost = 120;
       if (_totalCoins < coinCost) {
         throw StateError('Not enough coins to pull the gacha.');
@@ -218,17 +228,26 @@ class MetaProvider with ChangeNotifier {
     final rng = Random(DateTime.now().millisecondsSinceEpoch);
     final unowned =
         _skins.where((skin) => !_ownedSkinIds.contains(skin.id)).toList();
-    final rareCandidates =
-        unowned.where((skin) => skin.cost >= 300).toList(growable: false);
+    List<PlayerSkin> selectionPool = List.of(unowned);
+    if (useFreeRoll) {
+      selectionPool =
+          selectionPool.where((skin) => skin.cost < 300).toList(growable: false);
+      if (selectionPool.isEmpty) {
+        selectionPool = List.of(unowned);
+      }
+    }
+    final rareCandidates = selectionPool
+        .where((skin) => skin.cost >= 300)
+        .toList(growable: false);
 
     bool guaranteed = false;
     PlayerSkin? rewardSkin;
-    if (unowned.isNotEmpty) {
-      if (_gachaPityCounter >= 9 && rareCandidates.isNotEmpty) {
+    if (selectionPool.isNotEmpty) {
+      if (!useFreeRoll && _gachaPityCounter >= 9 && rareCandidates.isNotEmpty) {
         rewardSkin = rareCandidates[rng.nextInt(rareCandidates.length)];
         guaranteed = true;
       } else {
-        rewardSkin = unowned[rng.nextInt(unowned.length)];
+        rewardSkin = selectionPool[rng.nextInt(selectionPool.length)];
       }
     }
 
@@ -237,6 +256,10 @@ class MetaProvider with ChangeNotifier {
       await _saveOwnedSkins();
       _gachaPityCounter = rewardSkin.cost >= 300 ? 0 : _gachaPityCounter + 1;
       await _saveGachaState();
+      if (useFreeRoll) {
+        _freeGachaAvailable = false;
+        await _saveFreeGachaState();
+      }
       notifyListeners();
       return GachaResult(
         rewardId: 'skin_${rewardSkin.id}',
@@ -250,6 +273,10 @@ class MetaProvider with ChangeNotifier {
     await addCoins(coinReward);
     _gachaPityCounter = (_gachaPityCounter + 1).clamp(0, 9);
     await _saveGachaState();
+    if (useFreeRoll) {
+      _freeGachaAvailable = false;
+      await _saveFreeGachaState();
+    }
     return const GachaResult(
       rewardId: 'coins_150',
       displayName: '150 Coins',
@@ -259,12 +286,16 @@ class MetaProvider with ChangeNotifier {
 
   void updateSettings({
     bool? leftHanded,
+    bool? oneTapMode,
     double? hapticStrength,
     bool? colorBlindMode,
     bool? screenShake,
   }) {
     if (leftHanded != null) {
       _leftHandedMode = leftHanded;
+    }
+    if (oneTapMode != null) {
+      _oneTapMode = oneTapMode;
     }
     if (hapticStrength != null) {
       _hapticStrength = hapticStrength.clamp(0.0, 1.0);
@@ -276,6 +307,18 @@ class MetaProvider with ChangeNotifier {
       _screenShake = screenShake;
     }
     _saveSettings();
+    notifyListeners();
+  }
+
+  Future<void> markLeftHandPromptSeen() async {
+    if (_hasShownLeftHandPrompt) {
+      return;
+    }
+    _hasShownLeftHandPrompt = true;
+    final prefs = _prefs;
+    if (prefs != null) {
+      await prefs.setBool(_leftHandPromptKey, true);
+    }
     notifyListeners();
   }
 
@@ -360,6 +403,7 @@ class MetaProvider with ChangeNotifier {
           (decoded['hapticStrength'] as num?)?.toDouble() ?? _hapticStrength;
       _colorBlindMode = decoded['colorBlind'] as bool? ?? _colorBlindMode;
       _screenShake = decoded['screenShake'] as bool? ?? _screenShake;
+      _oneTapMode = decoded['oneTapMode'] as bool? ?? _oneTapMode;
     }
 
     final missionRaw = _prefs?.getString(_dailyMissionDataKey);
@@ -389,6 +433,8 @@ class MetaProvider with ChangeNotifier {
     }
 
     _gachaPityCounter = _prefs?.getInt(_gachaPityKey) ?? 0;
+    _freeGachaAvailable = _prefs?.getBool(_freeGachaKey) ?? true;
+    _hasShownLeftHandPrompt = _prefs?.getBool(_leftHandPromptKey) ?? false;
 
     await refreshDailyMissionsIfNeeded();
     _initialized = true;
@@ -481,6 +527,27 @@ class MetaProvider with ChangeNotifier {
     if (prefs != null) {
       await prefs.setInt(_gachaPityKey, _gachaPityCounter);
     }
+  }
+
+  Future<void> _saveFreeGachaState() async {
+    final prefs = _prefs;
+    if (prefs != null) {
+      await prefs.setBool(_freeGachaKey, _freeGachaAvailable);
+    }
+  }
+
+  void queueRunBoost(RunBoost boost) {
+    _queuedBoost = boost;
+    notifyListeners();
+  }
+
+  RunBoost? consumeQueuedBoost() {
+    final boost = _queuedBoost;
+    _queuedBoost = null;
+    if (boost != null) {
+      notifyListeners();
+    }
+    return boost;
   }
 
   List<DailyMission> _generateDailyMissions(DateTime today) {

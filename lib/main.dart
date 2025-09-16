@@ -15,6 +15,7 @@ import 'line_provider.dart';
 import 'meta_provider.dart';
 import 'obstacle_provider.dart';
 import 'sound_provider.dart';
+import 'remote_config_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -98,14 +99,17 @@ class _GameScreenWrapperState extends State<GameScreenWrapper> with TickerProvid
       providers: [
         Provider(create: (_) => SoundProvider()), // Add SoundProvider
         ChangeNotifierProvider(create: (_) => MetaProvider()),
-        ChangeNotifierProvider(
+        ChangeNotifierProvider(create: (_) => RemoteConfigProvider()),
+        ChangeNotifierProxyProvider<RemoteConfigProvider, AdProvider>(
           create: (context) =>
               AdProvider(analytics: context.read<AnalyticsProvider>()),
+          update: (_, remote, ad) => ad!..applyRemoteConfig(remote.adConfig),
         ),
         ChangeNotifierProvider(create: (_) => LineProvider()),
         ChangeNotifierProvider(create: (_) => ObstacleProvider(gameWidth: gameWidth)),
         ChangeNotifierProvider(create: (_) => CoinProvider()),
-        ChangeNotifierProxyProvider5<AdProvider, LineProvider, ObstacleProvider, CoinProvider, MetaProvider, GameProvider>(
+        ChangeNotifierProxyProvider6<AdProvider, LineProvider, ObstacleProvider,
+            CoinProvider, MetaProvider, RemoteConfigProvider, GameProvider>(
           create: (context) => GameProvider(
             analytics: context.read<AnalyticsProvider>(),
             adProvider: context.read<AdProvider>(),
@@ -113,11 +117,12 @@ class _GameScreenWrapperState extends State<GameScreenWrapper> with TickerProvid
             obstacleProvider: context.read<ObstacleProvider>(),
             coinProvider: context.read<CoinProvider>(),
             metaProvider: context.read<MetaProvider>(),
+            remoteConfigProvider: context.read<RemoteConfigProvider>(),
             soundProvider: context.read<SoundProvider>(),
             vsync: this,
           ),
-          update: (_, ad, line, obstacle, coin, meta, game) =>
-              game!..updateDependencies(ad, line, obstacle, coin, meta),
+          update: (_, ad, line, obstacle, coin, meta, remote, game) => game!
+            ..updateDependencies(ad, line, obstacle, coin, meta, remote),
         ),
       ],
       child: const GameScreen(),

@@ -21,6 +21,8 @@ class DrawingPainter extends CustomPainter {
     required this.colorBlindFriendly,
     required this.elapsedMs,
     required this.scrollSpeed,
+    required this.frameId,
+    required this.lineSignature,
   });
 
   final Offset playerPosition;
@@ -32,6 +34,14 @@ class DrawingPainter extends CustomPainter {
   final bool colorBlindFriendly;
   final double elapsedMs;
   final double scrollSpeed;
+  final int frameId;
+  final int lineSignature;
+  final Paint _coinHaloPaint =
+      Paint()..style = PaintingStyle.stroke..strokeWidth = 2;
+  final Paint _coinSparklePaint =
+      Paint()..style = PaintingStyle.stroke..strokeWidth = 2..strokeCap = StrokeCap.round;
+  final Paint _lineStrokePaint =
+      Paint()..strokeCap = StrokeCap.round..strokeJoin = StrokeJoin.round..strokeWidth = 8;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -454,21 +464,15 @@ class DrawingPainter extends CustomPainter {
       canvas.drawCircle(coin.position, coin.radius, basePaint);
 
       final twinkle = 0.5 + 0.5 * math.sin((coin.position.dx + time * 120) * 0.05);
-      final haloPaint = Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2
-        ..color = Colors.white.withOpacity(0.25 + 0.35 * twinkle);
-      canvas.drawCircle(coin.position, coin.radius + 3, haloPaint);
+      _coinHaloPaint.color = Colors.white.withOpacity(0.25 + 0.35 * twinkle);
+      canvas.drawCircle(coin.position, coin.radius + 3, _coinHaloPaint);
 
-      final sparkle = Paint()
-        ..color = Colors.white.withOpacity(0.6 + 0.3 * twinkle)
-        ..strokeWidth = 2
-        ..strokeCap = StrokeCap.round;
+      _coinSparklePaint.color = Colors.white.withOpacity(0.6 + 0.3 * twinkle);
       final double angle = time * 6 + coin.position.dx * 0.05;
       final Offset dir = Offset(math.cos(angle), math.sin(angle));
       final Offset ortho = Offset(-dir.dy, dir.dx);
-      canvas.drawLine(coin.position - dir * 4, coin.position + dir * 4, sparkle);
-      canvas.drawLine(coin.position - ortho * 3, coin.position + ortho * 3, sparkle);
+      canvas.drawLine(coin.position - dir * 4, coin.position + dir * 4, _coinSparklePaint);
+      canvas.drawLine(coin.position - ortho * 3, coin.position + ortho * 3, _coinSparklePaint);
     }
   }
 
@@ -490,19 +494,23 @@ class DrawingPainter extends CustomPainter {
       final age = now.difference(line.creationTime);
       final t = (1 - age.inMilliseconds / LineProvider.lineLifetime.inMilliseconds)
           .clamp(0.0, 1.0);
-      final paint = Paint()
+      _lineStrokePaint
         ..color = skin.trailColor.withOpacity(t)
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round
-        ..strokeWidth = 8
         ..style = PaintingStyle.stroke;
 
-      canvas.drawPath(path, paint);
+      canvas.drawPath(path, _lineStrokePaint);
     }
   }
 
   @override
   bool shouldRepaint(covariant DrawingPainter oldDelegate) {
-    return true;
+    return frameId != oldDelegate.frameId ||
+        lineSignature != oldDelegate.lineSignature ||
+        isRestWindow != oldDelegate.isRestWindow ||
+        colorBlindFriendly != oldDelegate.colorBlindFriendly ||
+        skin.id != oldDelegate.skin.id ||
+        obstacles.length != oldDelegate.obstacles.length ||
+        coins.length != oldDelegate.coins.length ||
+        playerPosition != oldDelegate.playerPosition;
   }
 }

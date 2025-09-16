@@ -1,11 +1,19 @@
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 class DrawnLine {
-  DrawnLine({required this.points, required this.creationTime});
+  DrawnLine({required this.points, required this.creationTime})
+      : minX = points.first.dx,
+        maxX = points.first.dx,
+        version = 1;
 
   final List<Offset> points;
   final DateTime creationTime;
+  double minX;
+  double maxX;
+  int version;
 }
 
 class LineProvider with ChangeNotifier {
@@ -28,6 +36,8 @@ class LineProvider with ChangeNotifier {
   List<DrawnLine> get lines => _lines;
 
   double get inkAmount => _inkAmount;
+
+  int get signature => _lines.fold<int>(0, (value, line) => value ^ line.version);
 
   double get _maxInk => (_baseMaxInk + _capacityBonus).clamp(60.0, 200.0);
 
@@ -76,6 +86,9 @@ class LineProvider with ChangeNotifier {
       final cappedPoint = Offset.lerp(previousPoint, point, ratio);
       if (cappedPoint != null) {
         currentLine.points.add(cappedPoint);
+        currentLine.minX = math.min(currentLine.minX, cappedPoint.dx);
+        currentLine.maxX = math.max(currentLine.maxX, cappedPoint.dx);
+        currentLine.version++;
       }
       _inkAmount = 0;
       _isDrawing = false;
@@ -85,6 +98,9 @@ class LineProvider with ChangeNotifier {
 
     _inkAmount = (_inkAmount - inkCost).clamp(0.0, _maxInk);
     currentLine.points.add(point);
+    currentLine.minX = math.min(currentLine.minX, point.dx);
+    currentLine.maxX = math.max(currentLine.maxX, point.dx);
+    currentLine.version++;
     notifyListeners();
   }
 
@@ -123,6 +139,17 @@ class LineProvider with ChangeNotifier {
     if (_lines.length != previousLength || _inkAmount != previousInk) {
       notifyListeners();
     }
+  }
+
+  bool grantEmergencyInk(double minimumInk) {
+    final threshold = minimumInk.clamp(_minInkToStart, _maxInk);
+    if (_inkAmount >= threshold) {
+      return false;
+    }
+    _inkAmount = threshold;
+    _isDrawing = false;
+    notifyListeners();
+    return true;
   }
 
   void clearAllLines() {
