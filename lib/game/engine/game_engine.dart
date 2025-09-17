@@ -1098,17 +1098,6 @@ class GameProvider with ChangeNotifier {
     }
   }
 
-  // リソースの解放
-  @override
-  void dispose() {
-    _ticker?.dispose();
-    _toastTimer?.cancel();
-    _performanceMonitor.dispose();
-    _batteryOptimizer.dispose();
-    _errorRecoveryManager.dispose();
-    super.dispose();
-  }
-
   // Called by ChangeNotifierProxyProvider when dependencies change.
   void updateDependencies(
     AdManager ad,
@@ -1233,8 +1222,8 @@ class GameProvider with ChangeNotifier {
     _toastNotifier.dispose();
     metaProvider.removeListener(_dependencyListener);
     remoteConfigProvider.removeListener(_dependencyListener);
-    _performanceMonitor.stopMonitoring();
-    _batteryOptimizer.stopOptimization();
+    _performanceMonitor.dispose();
+    _batteryOptimizer.dispose();
     _errorRecoveryManager.dispose();
     super.dispose();
   }
