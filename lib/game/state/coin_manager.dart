@@ -87,8 +87,12 @@ class CoinProvider with ChangeNotifier {
     required double deltaMs,
     required double scrollSpeed,
     required Rect playerRect,
-    required double _screenWidth,
+    required double screenWidth,
   }) {
+    if (screenWidth <= 0) {
+      return;
+    }
+
     if (_coins.isEmpty) {
       return;
     }

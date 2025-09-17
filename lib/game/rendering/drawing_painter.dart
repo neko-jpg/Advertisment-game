@@ -536,7 +536,7 @@ class DrawingPainter extends CustomPainter {
         path.lineTo(line.points[i].dx, line.points[i].dy);
       }
 
-      final age = now.difference(line.creationTime);
+      final age = now.difference(line.createdAt);
       final t = (1 - age.inMilliseconds / LineProvider.lineLifetime.inMilliseconds)
           .clamp(0.0, 1.0);
       _lineStrokePaint
