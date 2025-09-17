@@ -429,3 +429,16 @@ final List<_ObstaclePattern> _tutorialSafePatterns = [
     y: _ObstacleProviderPresets.groundY - 10,
   ),
 ];
+  /// 緊急クリーンアップ
+  void performEmergencyCleanup() {
+    _obstacles.clear();
+    _introQueue.clear();
+    notifyListeners();
+  }
+
+  /// 遠くの障害物をクリア
+  void clearDistantObstacles() {
+    _obstacles.removeWhere((obstacle) => obstacle.x < _playerX - 200);
+    notifyListeners();
+  }
+}

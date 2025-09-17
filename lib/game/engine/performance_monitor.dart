@@ -207,4 +207,10 @@ class PerformanceMonitor {
       'timestamp': DateTime.now().toIso8601String(),
     };
   }
+
+  /// リソースの解放
+  void dispose() {
+    stopMonitoring();
+    _frameTimeHistory.clear();
+  }
 }

@@ -278,6 +278,11 @@ class BatteryOptimizer {
       },
     };
   }
+
+  /// リソースの解放
+  void dispose() {
+    stopOptimization();
+  }
 }
 
 /// 省電力レベル

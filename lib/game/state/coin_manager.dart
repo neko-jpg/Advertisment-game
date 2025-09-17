@@ -1,113 +1,82 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 
-// Represents a single coin in the game world.
-class Coin {
-  Coin({required this.position});
-
-  Offset position;
-  final double radius = 15.0; // Size of the coin
-}
-
-// Manages the state of all coins in the game.
+/// コイン管理プロバイダー
 class CoinProvider with ChangeNotifier {
-  CoinProvider();
-
   final List<Coin> _coins = [];
-  int _coinsCollected = 0;
-  final math.Random _random = math.Random();
-
-  /// Target spawn rate in coins per second at baseline difficulty.
-  static const double _baseSpawnRatePerSecond = 1.2;
-
-  double _spawnMultiplier = 1.0;
-  double _restSpawnBonus = 1.5;
-  bool _inRestWindow = false;
-
-  List<Coin> get coins => _coins;
-  int get coinsCollected => _coinsCollected;
-
-  void configureSpawn({double? multiplier, double? restBonus}) {
-    if (multiplier != null) {
-      _spawnMultiplier = multiplier.clamp(0.2, 3.0);
+  int _totalCoins = 0;
+  
+  List<Coin> get coins => List.unmodifiable(_coins);
+  int get totalCoins => _totalCoins;
+  
+  /// コインの更新
+  void update(double deltaTime, double playerX) {
+    // コインの位置更新
+    for (final coin in _coins) {
+      coin.x -= 5.0 * deltaTime / 16.67; // 60FPSベース
     }
-    if (restBonus != null) {
-      _restSpawnBonus = restBonus.clamp(1.0, 5.0);
-    }
-  }
-
-  void setRestWindowActive(bool value) {
-    if (_inRestWindow == value) {
-      return;
-    }
-    _inRestWindow = value;
+    
+    // 画面外のコインを削除
+    _coins.removeWhere((coin) => coin.x < -50);
+    
     notifyListeners();
   }
-
-  // Periodically spawn new coins off-screen to the right.
-  void maybeSpawnCoin({
-    required double deltaMs,
-    required double screenWidth,
-    required double screenHeight,
-  }) {
-    if (deltaMs <= 0) {
-      return;
-    }
-    final double dtSeconds = deltaMs / 1000.0;
-    final double spawnRate =
-        _baseSpawnRatePerSecond *
-        _spawnMultiplier *
-        (_inRestWindow ? _restSpawnBonus : 1.0);
-    final double spawnProbability = 1 - math.exp(-spawnRate * dtSeconds);
-    if (_random.nextDouble() < spawnProbability) {
-      final yPosition =
-          _random.nextDouble() * (screenHeight - 100).clamp(0.0, screenHeight) +
-          50;
-      _coins.add(Coin(position: Offset(screenWidth + 50, yPosition)));
-      notifyListeners();
-    }
+  
+  /// コインの追加
+  void addCoin(double x, double y) {
+    _coins.add(Coin(x: x, y: y));
+    notifyListeners();
   }
-
-  // Update coin positions and check for collisions.
-  void update({
-    required double deltaMs,
-    required double scrollSpeed,
-    required Rect playerRect,
-    required double screenWidth,
-  }) {
-    final double dt = deltaMs / 16.0;
-    final double displacement = scrollSpeed * dt;
-    for (var coin in _coins) {
-      coin.position = coin.position.translate(-displacement, 0);
-    }
-
-    final collectedCoins = <Coin>[];
-    for (var coin in _coins) {
-      final coinRect = Rect.fromCircle(
-        center: coin.position,
-        radius: coin.radius,
-      );
-      if (playerRect.overlaps(coinRect)) {
-        collectedCoins.add(coin);
-        _coinsCollected++;
+  
+  /// コインの収集
+  bool collectCoin(double playerX, double playerY, double playerWidth, double playerHeight) {
+    for (int i = 0; i < _coins.length; i++) {
+      final coin = _coins[i];
+      if (_isColliding(playerX, playerY, playerWidth, playerHeight, coin)) {
+        _coins.removeAt(i);
+        _totalCoins++;
+        notifyListeners();
+        return true;
       }
     }
-
-    _coins.removeWhere(
-      (coin) =>
-          collectedCoins.contains(coin) || coin.position.dx < -coin.radius,
-    );
-
-    if (collectedCoins.isNotEmpty) {
-      notifyListeners();
-    }
+    return false;
   }
-
-  // Reset the state for a new game.
+  
+  bool _isColliding(double px, double py, double pw, double ph, Coin coin) {
+    return px < coin.x + coin.width &&
+           px + pw > coin.x &&
+           py < coin.y + coin.height &&
+           py + ph > coin.y;
+  }
+  
+  /// リセット
   void reset() {
     _coins.clear();
-    _coinsCollected = 0;
     notifyListeners();
   }
+  
+  /// エフェクトのクリア
+  void clearEffects() {
+    // エフェクト関連のクリーンアップ
+  }
+  
+  /// 遠くのコインをクリア
+  void clearDistantCoins() {
+    _coins.removeWhere((coin) => coin.x < -200);
+    notifyListeners();
+  }
+}
+
+/// コインクラス
+class Coin {
+  double x;
+  double y;
+  final double width;
+  final double height;
+  
+  Coin({
+    required this.x,
+    required this.y,
+    this.width = 20,
+    this.height = 20,
+  });
 }

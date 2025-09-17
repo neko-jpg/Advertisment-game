@@ -53,7 +53,7 @@ class _HomeScreenState extends State<HomeScreen>
     if (!mounted) {
       return;
     }
-    final game = Provider.maybeOf<GameProvider>(context, listen: false);
+    final game = Provider.of<GameProvider?>(context, listen: false);
     if (game == null) {
       return;
     }
@@ -106,16 +106,17 @@ class _HomeScreenState extends State<HomeScreen>
             remoteConfigProvider: context.read<RemoteConfigService>(),
             soundProvider: context.read<SoundController>(),
             vsync: this,
+            logger: context.read<AppLogger>(),
           ),
           update: (_, ad, line, obstacle, coin, meta, remote, game) =>
-              game!..updateDependencies(
-                ad,
-                line,
-                obstacle,
-                coin,
-                meta,
-                remote,
-              ),
+              game!..updateDependencies({
+                'ad': ad,
+                'line': line,
+                'obstacle': obstacle,
+                'coin': coin,
+                'meta': meta,
+                'remote': remote,
+              }),
         ),
       ],
       child: const GameScreen(),

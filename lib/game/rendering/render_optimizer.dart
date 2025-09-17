@@ -40,7 +40,10 @@ class RenderOptimizer {
   Paint getPaint() {
     if (_enableObjectPooling && _paintPool.isNotEmpty) {
       final paint = _paintPool.removeLast();
-      paint.reset(); // リセット
+      // Paintオブジェクトをリセット（reset()メソッドは存在しないため手動でリセット）
+      paint.color = const Color(0xFF000000);
+      paint.strokeWidth = 1.0;
+      paint.style = PaintingStyle.fill;
       return paint;
     }
     return Paint();
@@ -306,7 +309,7 @@ enum RenderQuality {
 /// 描画コール（バッチング用）
 class _DrawCall {
   final DrawCallType type;
-  final VoidCallback execute;
+  final void Function(Canvas) execute;
   
   _DrawCall(this.type, this.execute);
 }

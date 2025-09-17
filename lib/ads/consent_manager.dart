@@ -38,17 +38,28 @@ class ConsentManager {
       consentDebugSettings: _environment.isTestBuild
           ? ConsentDebugSettings(
               debugGeography: DebugGeography.debugGeographyEea,
-              testDeviceIds: const <String>[],
+              testIdentifiers: const <String>[],
             )
           : null,
     );
     try {
-      await info.requestConsentInfoUpdate(parameters);
-      _requiresConsent = info.consentStatus == ConsentStatus.required;
-      if (_requiresConsent && info.isConsentFormAvailable) {
-        await _loadAndShowForm();
-      }
-      _nonPersonalizedAds = info.consentStatus != ConsentStatus.obtained;
+      await info.requestConsentInfoUpdate(
+        parameters,
+        () {
+          // Success callback
+          _requiresConsent = info.getConsentStatus() == ConsentStatus.required;
+          info.isConsentFormAvailable().then((isAvailable) {
+            if (_requiresConsent && isAvailable) {
+              _loadAndShowForm();
+            }
+          });
+          _nonPersonalizedAds = info.getConsentStatus() != ConsentStatus.obtained;
+        },
+        (FormError error) {
+          // Error callback
+          _logger.warn('Consent update failed', error: error);
+        },
+      );
       _consentGathered = true;
     } catch (error, stackTrace) {
       _logger.warn('Consent update failed', error: error);
@@ -60,12 +71,19 @@ class ConsentManager {
 
   Future<void> _loadAndShowForm() async {
     try {
-      await ConsentForm.loadConsentForm().then(
+      ConsentForm.loadConsentForm(
         (ConsentForm form) async {
           if (!_requiresConsent) {
             return;
           }
-          await form.show();
+          form.show((FormError? error) {
+            if (error != null) {
+              _logger.warn('Consent form show failed', error: error);
+            }
+          });
+        },
+        (FormError error) {
+          _logger.warn('Consent form load failed', error: error);
         },
       );
     } catch (error, stackTrace) {
