@@ -4,10 +4,10 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_remote_config/firebase_remote_config.dart';
 import 'package:flutter/foundation.dart';
 
-import 'game_models.dart';
+import '../../game/models/game_models.dart';
 
-class RemoteConfigProvider with ChangeNotifier {
-  RemoteConfigProvider({bool initialize = true}) {
+class RemoteConfigService with ChangeNotifier {
+  RemoteConfigService({bool initialize = true}) {
     final shouldInitialize = initialize && Firebase.apps.isNotEmpty;
     if (shouldInitialize) {
       try {

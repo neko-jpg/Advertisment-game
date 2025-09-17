@@ -1,14 +1,14 @@
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:flutter/foundation.dart';
 
-import 'game_models.dart';
+import '../../game/models/game_models.dart';
 
 /// Lightweight wrapper around [FirebaseAnalytics] that exposes
 /// high-level logging helpers used across the game.
-class AnalyticsProvider {
-  AnalyticsProvider() : _analytics = FirebaseAnalytics.instance;
+class AnalyticsService {
+  AnalyticsService() : _analytics = FirebaseAnalytics.instance;
 
-  AnalyticsProvider.fake() : _analytics = null;
+  AnalyticsService.fake() : _analytics = null;
 
   final FirebaseAnalytics? _analytics;
 

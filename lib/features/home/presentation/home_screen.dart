@@ -1,34 +1,127 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
-
 import 'package:flutter/material.dart';
-
 import 'package:flutter/services.dart';
-
 import 'package:provider/provider.dart';
 
-import 'constants/animation_constants.dart';
+import '../../../ads/ad_manager.dart';
+import '../../../core/analytics/analytics_service.dart';
+import '../../../core/env.dart';
+import '../../../core/config/remote_config_service.dart';
+import '../../../core/constants/animation_constants.dart';
+import '../../../core/constants/ui_constants.dart';
+import '../../../game/audio/sound_controller.dart';
+import '../../../game/components/player_skin.dart';
+import '../../../game/engine/game_engine.dart';
+import '../../../game/models/game_models.dart';
+import '../../../game/rendering/drawing_painter.dart';
+import '../../../game/state/coin_manager.dart';
+import '../../../game/state/line_manager.dart';
+import '../../../game/state/meta_state.dart';
+import '../../../game/state/obstacle_manager.dart';
 
-import 'constants/ui_constants.dart';
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key});
 
-import 'game_provider.dart';
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
 
-import 'ad_provider.dart';
+class _HomeScreenState extends State<HomeScreen>
+    with TickerProviderStateMixin, WidgetsBindingObserver {
+  late final SoundController _soundController;
 
-import 'drawing_painter.dart';
+  @override
+  void initState() {
+    super.initState();
+    final environment = context.read<AppEnvironment>();
+    _soundController = SoundController(enableAudio: !environment.isTestBuild);
+    WidgetsBinding.instance.addObserver(this);
+    unawaited(context.read<AdManager>().initialize());
+  }
 
-import 'line_provider.dart';
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _soundController.dispose();
+    super.dispose();
+  }
 
-import 'coin_provider.dart';
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!mounted) {
+      return;
+    }
+    final game = Provider.maybeOf<GameProvider>(context, listen: false);
+    if (game == null) {
+      return;
+    }
+    switch (state) {
+      case AppLifecycleState.paused:
+      case AppLifecycleState.inactive:
+        game.handleAppLifecyclePause();
+        break;
+      case AppLifecycleState.resumed:
+        game.handleAppLifecycleResume();
+        break;
+      case AppLifecycleState.detached:
+      case AppLifecycleState.hidden:
+        break;
+    }
+  }
 
-import 'obstacle_provider.dart';
+  @override
+  Widget build(BuildContext context) {
+    final gameWidth = MediaQuery.of(context).size.width;
 
-import 'meta_provider.dart';
-
-import 'player_skin.dart';
-
-import 'game_models.dart';
-
-import 'sound_provider.dart';
+    return MultiProvider(
+      providers: [
+        Provider<SoundController>.value(value: _soundController),
+        ChangeNotifierProxyProvider<RemoteConfigService, MetaProvider>(
+          create: (_) => MetaProvider(),
+          update: (_, remote, meta) =>
+              meta!..applyUpgradeConfig(remote.metaConfig),
+        ),
+        ChangeNotifierProvider(create: (_) => LineProvider()),
+        ChangeNotifierProvider(
+          create: (_) => ObstacleProvider(gameWidth: gameWidth),
+        ),
+        ChangeNotifierProvider(create: (_) => CoinProvider()),
+        ChangeNotifierProxyProvider6<
+            AdManager,
+            LineProvider,
+            ObstacleProvider,
+            CoinProvider,
+            MetaProvider,
+            RemoteConfigService,
+            GameProvider>(
+          create: (context) => GameProvider(
+            analytics: context.read<AnalyticsService>(),
+            adManager: context.read<AdManager>(),
+            lineProvider: context.read<LineProvider>(),
+            obstacleProvider: context.read<ObstacleProvider>(),
+            coinProvider: context.read<CoinProvider>(),
+            metaProvider: context.read<MetaProvider>(),
+            remoteConfigProvider: context.read<RemoteConfigService>(),
+            soundProvider: context.read<SoundController>(),
+            vsync: this,
+          ),
+          update: (_, ad, line, obstacle, coin, meta, remote, game) =>
+              game!..updateDependencies(
+                ad,
+                line,
+                obstacle,
+                coin,
+                meta,
+                remote,
+              ),
+        ),
+      ],
+      child: const GameScreen(),
+    );
+  }
+}
 
 class GameScreen extends StatefulWidget {
   const GameScreen({super.key});
@@ -701,7 +794,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   Widget _buildGachaSection(BuildContext context, MetaProvider meta) {
     final textTheme = Theme.of(context).textTheme;
 
-    final adProvider = context.watch<AdProvider>();
+    final adProvider = context.watch<AdManager>();
 
     return Container(
       padding: const EdgeInsets.all(18),
@@ -818,7 +911,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
 
     MetaProvider meta,
   ) async {
-    final adProvider = context.read<AdProvider>();
+    final adProvider = context.read<AdManager>();
 
     if (!adProvider.isRewardedAdReady) {
       _showSnackMessage(context, 'Ad not ready yet.');
@@ -826,29 +919,29 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
       return;
     }
 
-    final sound = context.read<SoundProvider>();
+    final sound = context.read<SoundController>();
 
-    adProvider.showRewardAd(
+    adProvider.showRewardedAd(
       placement: 'gacha',
-
-      onReward: () {
+      onUserEarnedReward: () {
         meta.pullGacha(viaAd: true).then((result) {
           if (!mounted) return;
 
           _showSnackMessage(
             context,
-
             'Unlocked ${result.displayName}${result.wasGuaranteed ? ' (guaranteed!)' : ''}',
           );
         });
       },
-
       onAdOpened: () {
         sound.pauseBgmForInterruption();
       },
-
       onAdClosed: () {
         sound.resumeBgmAfterInterruption();
+      },
+      onFallback: () {
+        if (!mounted) return;
+        _showSnackMessage(context, 'Ad unavailable.');
       },
     );
   }
@@ -1435,7 +1528,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
 
                 child: ElevatedButton.icon(
                   onPressed: () {
-                    context.read<SoundProvider>().playJumpSfx();
+                    context.read<SoundController>().playJumpSfx();
 
                     _gameProvider.startGame();
 
@@ -1497,7 +1590,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
 
                 child: OutlinedButton.icon(
                   onPressed: () {
-                    context.read<SoundProvider>().playCoinSfx();
+                    context.read<SoundController>().playCoinSfx();
 
                     _showProgressionSheet(context, meta);
 
@@ -1592,57 +1685,48 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildReadyAdBoostButton(BuildContext context, MetaProvider meta) {
-    return Consumer<AdProvider>(
+    return Consumer<AdManager>(
       builder: (context, ad, _) {
         final ready = ad.isRewardedAdReady;
 
         return ElevatedButton.icon(
-          onPressed:
-              ready
-                  ? () {
-                    final sound = context.read<SoundProvider>();
+          onPressed: ready
+              ? () {
+                  final sound = context.read<SoundController>();
 
-                    ad.showRewardAd(
-                      placement: 'ready_boost',
+                  ad.showRewardedAd(
+                    placement: 'ready_boost',
+                    onUserEarnedReward: () {
+                      meta.queueRunBoost(
+                        const RunBoost(
+                          coinMultiplier: 2.0,
+                          inkRegenMultiplier: 1.25,
+                          duration: Duration(seconds: 30),
+                        ),
+                      );
 
-                      onReward: () {
-                        meta.queueRunBoost(
-                          const RunBoost(
-                            coinMultiplier: 2.0,
-
-                            inkRegenMultiplier: 1.25,
-
-                            duration: Duration(seconds: 30),
-                          ),
-                        );
-
-                        _showSnackMessage(
-                          context,
-
-                          '30s coin boost primed for your next run!',
-                        );
-                      },
-
-                      onAdOpened: () {
-                        sound.pauseBgmForInterruption();
-                      },
-
-                      onAdClosed: () {
-                        sound.resumeBgmAfterInterruption();
-                      },
-
-                      onFallbackReward: () {
-                        meta.addCoins(80);
-
-                        _showSnackMessage(
-                          context,
-
-                          'Ad unavailable — grabbed 80 coins instead.',
-                        );
-                      },
-                    );
-                  }
-                  : null,
+                      _showSnackMessage(
+                        context,
+                        '30s coin boost primed for your next run!',
+                      );
+                    },
+                    onAdOpened: () {
+                      sound.pauseBgmForInterruption();
+                    },
+                    onAdClosed: () {
+                      sound.resumeBgmAfterInterruption();
+                    },
+                    onFallback: () {
+                      meta.addCoins(80);
+                      if (!mounted) return;
+                      _showSnackMessage(
+                        context,
+                        'Ad unavailable — grabbed 80 coins instead.',
+                      );
+                    },
+                  );
+                }
+              : null,
 
           icon: const Icon(Icons.bolt_rounded),
 
@@ -2136,7 +2220,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
 
     MetaProvider meta,
   ) {
-    final adProvider = context.watch<AdProvider>();
+    final adProvider = context.watch<AdManager>();
 
     final textTheme = Theme.of(context).textTheme;
 
@@ -2246,21 +2330,18 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                       onPressed: () async {
                         await game.finalizeRun(metaProvider: meta);
 
-                        final sound = context.read<SoundProvider>();
+                        final sound = context.read<SoundController>();
 
                         adProvider.maybeShowInterstitial(
                           lastRunDuration: game.lastRunDuration,
-
-                          onClosed: () {
+                          placement: 'restart',
+                          onFinished: () {
                             game.resetGame();
-
                             game.startGame();
                           },
-
                           onAdOpened: () {
                             sound.pauseBgmForInterruption();
                           },
-
                           onAdClosed: () {
                             sound.resumeBgmAfterInterruption();
                           },
@@ -2291,21 +2372,25 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                     if (canRevive && adProvider.isRewardedAdReady)
                       ElevatedButton.icon(
                         onPressed: () {
-                          final sound = context.read<SoundProvider>();
+                          final sound = context.read<SoundController>();
 
-                          adProvider.showRewardAd(
+                          adProvider.showRewardedAd(
                             placement: 'revive',
-
-                            onReward: () {
+                            onUserEarnedReward: () {
                               game.revivePlayer();
                             },
-
                             onAdOpened: () {
                               sound.pauseBgmForInterruption();
                             },
-
                             onAdClosed: () {
                               sound.resumeBgmAfterInterruption();
+                            },
+                            onFallback: () {
+                              if (!mounted) return;
+                              _showSnackMessage(
+                                context,
+                                'Ad unavailable — revive failed.',
+                              );
                             },
                           );
                         },

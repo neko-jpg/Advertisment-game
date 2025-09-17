@@ -1,10 +1,10 @@
 import 'package:audioplayers/audioplayers.dart';
 
-import 'gen/assets.gen.dart';
+import '../../gen/assets.gen.dart';
 
 // Manages all audio playback for the game.
-class SoundProvider {
-  SoundProvider({bool enableAudio = true}) : _enabled = enableAudio {
+class SoundController {
+  SoundController({bool enableAudio = true}) : _enabled = enableAudio {
     if (enableAudio) {
       _bgmPlayer = AudioPlayer()..setReleaseMode(ReleaseMode.loop);
       _sfxPlayer = AudioPlayer()..setReleaseMode(ReleaseMode.release);

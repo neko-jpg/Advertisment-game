@@ -5,8 +5,8 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'game_models.dart';
-import 'player_skin.dart';
+import '../components/player_skin.dart';
+import '../models/game_models.dart';
 
 class MetaProvider with ChangeNotifier {
   MetaProvider() {

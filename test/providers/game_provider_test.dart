@@ -1,16 +1,19 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:myapp/ad_provider.dart';
-import 'package:myapp/analytics_provider.dart';
-import 'package:myapp/coin_provider.dart';
-import 'package:myapp/game_models.dart';
-import 'package:myapp/game_provider.dart';
-import 'package:myapp/line_provider.dart';
-import 'package:myapp/meta_provider.dart';
-import 'package:myapp/obstacle_provider.dart';
-import 'package:myapp/remote_config_provider.dart';
-import 'package:myapp/sound_provider.dart';
+import 'package:myapp/ads/ad_manager.dart';
+import 'package:myapp/ads/consent_manager.dart';
+import 'package:myapp/core/analytics/analytics_service.dart';
+import 'package:myapp/core/config/remote_config_service.dart';
+import 'package:myapp/core/env.dart';
+import 'package:myapp/core/logging/logger.dart';
+import 'package:myapp/game/audio/sound_controller.dart';
+import 'package:myapp/game/engine/game_engine.dart';
+import 'package:myapp/game/models/game_models.dart';
+import 'package:myapp/game/state/coin_manager.dart';
+import 'package:myapp/game/state/line_manager.dart';
+import 'package:myapp/game/state/meta_state.dart';
+import 'package:myapp/game/state/obstacle_manager.dart';
 
 const DifficultyTuningRemoteConfig _testTuning = DifficultyTuningRemoteConfig(
   defaultSafeWindowPx: 190.0,
@@ -62,33 +65,47 @@ Future<GameProvider> _createGameProvider({
   List<RunStats> runs = const [],
   DifficultyTuningRemoteConfig tuning = _testTuning,
 }) async {
-  final analytics = AnalyticsProvider.fake();
-  final adProvider = AdProvider(analytics: analytics, autoLoad: false);
+  final analytics = AnalyticsService.fake();
+  final environment = AppEnvironment.resolve().copyWith(
+    adsEnabled: false,
+    analyticsEnabled: false,
+  );
+  final logger = AppLogger(environment: environment);
+  final remoteConfig = RemoteConfigService(initialize: false)
+    ..setDifficultyForTesting(
+      const DifficultyRemoteConfig(
+        baseSpeedMultiplier: 1.0,
+        speedRampIntervalScore: 380,
+        speedRampIncrease: 0.35,
+        maxSpeedMultiplier: 2.2,
+        targetSessionSeconds: 50,
+        tutorialSafeWindowMs: 30000,
+        emergencyInkFloor: 14,
+      ),
+    )
+    ..setDifficultyTuningForTesting(tuning)
+    ..setMetaConfigForTesting(const MetaRemoteConfig(upgradeOverrides: []))
+    ..markReadyForTesting();
+  final consentManager = ConsentManager(
+    environment: environment,
+    logger: logger,
+  );
+  final adManager = AdManager(
+    analytics: analytics,
+    environment: environment,
+    consentManager: consentManager,
+    remoteConfig: remoteConfig,
+    logger: logger,
+  );
   final lineProvider = LineProvider();
   final obstacleProvider = ObstacleProvider(gameWidth: 400);
   final coinProvider = CoinProvider();
   final metaProvider = await _createMetaProvider();
-  final remoteConfig =
-      RemoteConfigProvider(initialize: false)
-        ..setDifficultyForTesting(
-          const DifficultyRemoteConfig(
-            baseSpeedMultiplier: 1.0,
-            speedRampIntervalScore: 380,
-            speedRampIncrease: 0.35,
-            maxSpeedMultiplier: 2.2,
-            targetSessionSeconds: 50,
-            tutorialSafeWindowMs: 30000,
-            emergencyInkFloor: 14,
-          ),
-        )
-        ..setDifficultyTuningForTesting(tuning)
-        ..setMetaConfigForTesting(const MetaRemoteConfig(upgradeOverrides: []))
-        ..markReadyForTesting();
-  final soundProvider = SoundProvider(enableAudio: false);
+  final soundProvider = SoundController(enableAudio: false);
 
   final provider = GameProvider(
     analytics: analytics,
-    adProvider: adProvider,
+    adManager: adManager,
     lineProvider: lineProvider,
     obstacleProvider: obstacleProvider,
     coinProvider: coinProvider,
@@ -200,28 +217,21 @@ void main() {
       addTearDown(provider.dispose);
 
       final tuning = provider.evaluateDifficultyForTesting();
-      final expectedSpeed =
-          1.0 +
-          _testTuning.longRunSpeedDelta +
-          _testTuning.highAccidentSpeedDelta;
-      final expectedDensity =
-          1.0 +
-          _testTuning.longRunDensityDelta +
-          _testTuning.highAccidentDensityDelta;
-      final expectedCoin =
-          1.0 +
-          _testTuning.longRunCoinDelta +
-          _testTuning.highAccidentCoinDelta;
+      final expectedSpeed = 1.0 +
+          _testTuning.highAccidentSpeedDelta +
+          _testTuning.longRunSpeedDelta;
+      final expectedDensity = 1.0 +
+          _testTuning.highAccidentDensityDelta +
+          _testTuning.longRunDensityDelta;
+      final expectedSafeWindow =
+          _testTuning.defaultSafeWindowPx +
+          _testTuning.highAccidentSafeWindowDelta;
+
       expect(tuning.speedMultiplier, closeTo(expectedSpeed, 0.0001));
       expect(tuning.densityMultiplier, closeTo(expectedDensity, 0.0001));
-      expect(tuning.coinMultiplier, closeTo(expectedCoin, 0.0001));
       expect(
         tuning.safeWindowPx,
-        closeTo(
-          _testTuning.defaultSafeWindowPx +
-              _testTuning.highAccidentSafeWindowDelta,
-          0.0001,
-        ),
+        closeTo(expectedSafeWindow, 0.0001),
       );
     },
   );

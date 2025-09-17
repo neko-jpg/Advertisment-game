@@ -1,21 +1,21 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 
-import 'ad_provider.dart';
-import 'analytics_provider.dart';
-import 'coin_provider.dart';
-import 'game_models.dart';
-import 'line_provider.dart';
-import 'meta_provider.dart';
-import 'obstacle_provider.dart';
-import 'sound_provider.dart';
-import 'remote_config_provider.dart';
-import 'constants/game_constants.dart';
+import '../../ads/ad_manager.dart';
+import '../../core/analytics/analytics_service.dart';
+import '../../core/config/remote_config_service.dart';
+import '../../core/constants/game_constants.dart';
+import '../audio/sound_controller.dart';
+import '../models/game_models.dart';
+import '../state/coin_manager.dart';
+import '../state/line_manager.dart';
+import '../state/meta_state.dart';
+import '../state/obstacle_manager.dart';
 
 enum GameState { ready, running, dead, result }
 
@@ -143,18 +143,18 @@ class GameProvider with ChangeNotifier {
   double _boostRemainingMs = 0.0;
 
   // Providers
-  final AnalyticsProvider analytics;
-  AdProvider adProvider;
+  final AnalyticsService analytics;
+  AdManager adManager;
   LineProvider lineProvider;
   ObstacleProvider obstacleProvider;
   CoinProvider coinProvider;
   MetaProvider metaProvider;
-  RemoteConfigProvider remoteConfigProvider;
-  SoundProvider soundProvider;
+  RemoteConfigService remoteConfigProvider;
+  SoundController soundProvider;
 
   GameProvider({
     required this.analytics,
-    required this.adProvider,
+    required this.adManager,
     required this.lineProvider,
     required this.obstacleProvider,
     required this.coinProvider,
@@ -363,7 +363,7 @@ class GameProvider with ChangeNotifier {
     );
     soundProvider.startBgm();
 
-    adProvider.loadInterstitialAd();
+    unawaited(adManager.ensureBannerAd());
 
     unawaited(
       analytics.logGameStart(
@@ -613,7 +613,6 @@ class GameProvider with ChangeNotifier {
             _hasCompletedTutorial || (_didJumpThisRun && _didDrawLineThisRun);
         _hasBankedRewards = false;
         _ticker?.stop();
-        adProvider.loadRewardAd();
         notifyListeners();
         return;
       }
@@ -761,7 +760,7 @@ class GameProvider with ChangeNotifier {
     } else {
       _accidentStreak = 0;
     }
-    adProvider.registerRunEnd(_lastRunDuration);
+    adManager.registerGameOver(_lastRunDuration);
     final missionsCompletedDelta = math.max(
       0,
       completedAfter - completedBefore,
@@ -922,14 +921,14 @@ class GameProvider with ChangeNotifier {
 
   // Called by ChangeNotifierProxyProvider when dependencies change.
   void updateDependencies(
-    AdProvider ad,
+    AdManager ad,
     LineProvider line,
     ObstacleProvider obstacle,
     CoinProvider coin,
     MetaProvider meta,
-    RemoteConfigProvider remote,
+    RemoteConfigService remote,
   ) {
-    adProvider = ad;
+    adManager = ad;
     lineProvider = line;
     obstacleProvider = obstacle;
     coinProvider = coin;
@@ -943,6 +942,18 @@ class GameProvider with ChangeNotifier {
         _maxSpeedMultiplier,
       );
       obstacleProvider.setSpeedMultiplier(_currentSpeedMultiplier);
+    }
+  }
+
+  void handleAppLifecyclePause() {
+    _ticker?.stop();
+    soundProvider.pauseBgmForInterruption();
+  }
+
+  void handleAppLifecycleResume() {
+    if (_gameState == GameState.running) {
+      _ticker?.start();
+      soundProvider.resumeBgmAfterInterruption();
     }
   }
 

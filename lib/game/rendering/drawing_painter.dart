@@ -4,11 +4,11 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-import 'constants/game_constants.dart';
-import 'coin_provider.dart';
-import 'line_provider.dart';
-import 'obstacle_provider.dart';
-import 'player_skin.dart';
+import '../../core/constants/game_constants.dart';
+import '../components/player_skin.dart';
+import '../state/coin_manager.dart';
+import '../state/line_manager.dart';
+import '../state/obstacle_manager.dart';
 
 /// Renders the complete game world, including background elements,
 /// the player avatar, obstacles, coins and drawn platforms.
