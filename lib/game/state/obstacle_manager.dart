@@ -41,7 +41,7 @@ class ObstacleProvider with ChangeNotifier {
   double _tutorialSafetyWindowMs = 0.0;
   double _tutorialElapsedMs = 0.0;
 
-  List<Obstacle> get obstacles => _obstacles;
+  List<Obstacle> get obstacles => List.unmodifiable(_obstacles);
   double get speed => _speed;
 
   void start({required double screenWidth, required bool tutorialMode}) {
@@ -142,6 +142,25 @@ class ObstacleProvider with ChangeNotifier {
     _restMode = false;
     _tutorialElapsedMs = 0.0;
     notifyListeners();
+  }
+
+  /// Clears all cached obstacles and intro sequences. Used for recovery.
+  void performEmergencyCleanup() {
+    if (_obstacles.isEmpty && _introQueue.isEmpty) {
+      return;
+    }
+    _obstacles.clear();
+    _introQueue.clear();
+    notifyListeners();
+  }
+
+  /// Removes obstacles that are far behind the player to save memory.
+  void clearDistantObstacles() {
+    final int before = _obstacles.length;
+    _obstacles.removeWhere((Obstacle obstacle) => obstacle.x < _playerX - 200);
+    if (before != _obstacles.length) {
+      notifyListeners();
+    }
   }
 
   double _spawnDelay() {
@@ -429,16 +448,3 @@ final List<_ObstaclePattern> _tutorialSafePatterns = [
     y: _ObstacleProviderPresets.groundY - 10,
   ),
 ];
-  /// 緊急クリーンアップ
-  void performEmergencyCleanup() {
-    _obstacles.clear();
-    _introQueue.clear();
-    notifyListeners();
-  }
-
-  /// 遠くの障害物をクリア
-  void clearDistantObstacles() {
-    _obstacles.removeWhere((obstacle) => obstacle.x < _playerX - 200);
-    notifyListeners();
-  }
-}
