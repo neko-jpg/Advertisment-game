@@ -11,7 +11,6 @@ import '../../core/analytics/analytics_service.dart';
 import '../../core/config/remote_config_service.dart';
 import '../../core/constants/game_constants.dart';
 import '../../core/logging/logger.dart';
-import '../../core/error_handling/error_recovery_manager.dart';
 import '../audio/sound_controller.dart';
 import '../models/game_models.dart';
 import '../state/coin_manager.dart';
@@ -194,12 +193,7 @@ class GameProvider with ChangeNotifier {
     
     // エラー回復システム初期化
     _errorRecoveryManager = ErrorRecoveryManager(logger: logger);
-    _initializeErrorRecovery();
-  }
-
-  /// エラー回復システムの初期化
-  void _initializeErrorRecovery() {
-    // エラー回復システムの設定
+    unawaited(_initializeErrorRecovery());
   }
 
   // Getters
@@ -685,6 +679,18 @@ class GameProvider with ChangeNotifier {
       _markHudDirty();
     }
     _markWorldDirty();
+  } catch (error, stackTrace) {
+    _ticker?.stop();
+    _performEmergencyCleanup();
+    unawaited(_errorRecoveryManager.handleCrash(error, stackTrace));
+    _pushToast(
+      const GameToast(
+        message: 'Game recovered from an error',
+        icon: Icons.health_and_safety,
+        color: Color(0xFF22C55E),
+        duration: Duration(seconds: 2),
+      ),
+    );
   }
 
   void revivePlayer() {
@@ -1030,57 +1036,6 @@ class GameProvider with ChangeNotifier {
     }
   }
 
-  // パフォーマンス警告ハンドリング
-  void _handlePerformanceWarning(String warning) {
-    _pushToast(
-      GameToast(
-        message: 'Performance: $warning',
-        icon: Icons.warning_rounded,
-        color: const Color(0xFFF59E0B),
-        duration: const Duration(seconds: 2),
-      ),
-    );
-  }
-
-  // メモリ警告ハンドリング
-  void _handleMemoryWarning(String warning) {
-    _pushToast(
-      GameToast(
-        message: 'Memory: $warning',
-        icon: Icons.memory_rounded,
-        color: const Color(0xFFEF4444),
-        duration: const Duration(seconds: 2),
-      ),
-    );
-    
-    // メモリ不足時の緊急対策
-    _performEmergencyCleanup();
-  }
-
-  // 低バッテリーハンドリング
-  void _handleLowBattery() {
-    _pushToast(
-      const GameToast(
-        message: 'Low battery - reducing effects',
-        icon: Icons.battery_alert_rounded,
-        color: Color(0xFFF59E0B),
-        duration: Duration(seconds: 3),
-      ),
-    );
-  }
-
-  // 電源モード変更ハンドリング
-  void _handlePowerModeChanged(String mode) {
-    _pushToast(
-      GameToast(
-        message: 'Power mode: $mode',
-        icon: Icons.power_settings_new_rounded,
-        color: const Color(0xFF6B7280),
-        duration: const Duration(seconds: 2),
-      ),
-    );
-  }
-
   // 緊急クリーンアップ
   void _performEmergencyCleanup() {
     try {
@@ -1253,74 +1208,4 @@ class GameProvider with ChangeNotifier {
     }
   }
 
-  // Missing methods implementation
-  void jump() {
-    if (_gameState == GameState.playing) {
-      // ジャンプロジック
-      _emitHaptic();
-    }
-  }
-
-  void markLineUsed() {
-    // 線の使用をマーク
-  }
-
-  Future<void> finalizeRun({required dynamic metaProvider}) async {
-    // ランの終了処理
-  }
-
-  void resetGame() {
-    _gameState = GameState.waiting;
-    _playerX = 0.5;
-    notifyListeners();
-  }
-
-  void revivePlayer() {
-    if (_gameState == GameState.gameOver) {
-      _gameState = GameState.playing;
-      notifyListeners();
-    }
-  }
-
-  void updateDependencies(dynamic dependencies) {
-    // 依存関係の更新
-  }
-
-  double _evaluateDifficulty() {
-    return 1.0; // デフォルト難易度
-  }
-
-  void _emitHaptic({bool heavy = false}) {
-    if (heavy) {
-      HapticFeedback.heavyImpact();
-    } else {
-      HapticFeedback.lightImpact();
-    }
-  }
-
-  RunStats _buildRunStats() {
-    return RunStats(
-      distance: 0,
-      coinsCollected: 0,
-      obstaclesAvoided: 0,
-      timeElapsed: 0,
-    );
-  }
-
-  Future<void> _restoreFromSavedState(GameStateSnapshot savedState) async {
-    // 保存状態からの復元
-  }
-
-  void _performEmergencyCleanup() {
-    // 緊急クリーンアップ
-  }
-
-  @override
-  void dispose() {
-    _performanceMonitor.dispose();
-    _batteryOptimizer.dispose();
-    _ticker?.dispose();
-    _toastTimer?.cancel();
-    super.dispose();
-  }
 }

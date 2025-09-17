@@ -19,8 +19,8 @@ android {
     namespace = "com.quickdrawdash.app"
     compileSdk = flutter.compileSdkVersion
 
-    // Force the Android NDK version required by audioplayers_android.
-    ndkVersion = "27.0.12077973"
+    // Align with the Flutter-managed NDK version to avoid mismatch errors.
+    ndkVersion = flutter.ndkVersion
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11

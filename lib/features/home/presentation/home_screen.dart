@@ -109,14 +109,14 @@ class _HomeScreenState extends State<HomeScreen>
             logger: context.read<AppLogger>(),
           ),
           update: (_, ad, line, obstacle, coin, meta, remote, game) =>
-              game!..updateDependencies({
-                'ad': ad,
-                'line': line,
-                'obstacle': obstacle,
-                'coin': coin,
-                'meta': meta,
-                'remote': remote,
-              }),
+              game!..updateDependencies(
+                ad,
+                line,
+                obstacle,
+                coin,
+                meta,
+                remote,
+              ),
         ),
       ],
       child: const GameScreen(),

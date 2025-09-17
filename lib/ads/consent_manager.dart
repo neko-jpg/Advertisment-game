@@ -43,23 +43,30 @@ class ConsentManager {
           : null,
     );
     try {
-      await info.requestConsentInfoUpdate(
+      final completer = Completer<void>();
+      info.requestConsentInfoUpdate(
         parameters,
         () {
-          // Success callback
-          _requiresConsent = info.getConsentStatus() == ConsentStatus.required;
+          final status = info.getConsentStatus();
+          _requiresConsent = status == ConsentStatus.required;
+          _nonPersonalizedAds = status != ConsentStatus.obtained;
           info.isConsentFormAvailable().then((isAvailable) {
             if (_requiresConsent && isAvailable) {
               _loadAndShowForm();
             }
           });
-          _nonPersonalizedAds = info.getConsentStatus() != ConsentStatus.obtained;
+          if (!completer.isCompleted) {
+            completer.complete();
+          }
         },
         (FormError error) {
-          // Error callback
           _logger.warn('Consent update failed', error: error);
+          if (!completer.isCompleted) {
+            completer.completeError(error);
+          }
         },
       );
+      await completer.future;
       _consentGathered = true;
     } catch (error, stackTrace) {
       _logger.warn('Consent update failed', error: error);
@@ -99,7 +106,7 @@ class ConsentManager {
     await _loadAndShowForm();
     final info = _consentInformation;
     if (info != null) {
-      _nonPersonalizedAds = info.consentStatus != ConsentStatus.obtained;
+      _nonPersonalizedAds = info.getConsentStatus() != ConsentStatus.obtained;
     }
   }
 
