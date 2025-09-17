@@ -50,6 +50,7 @@ class AdManager extends ChangeNotifier {
   BannerAd? _bannerAd;
   bool _rewardedReady = false;
   bool _initialized = false;
+  bool _adsReady = false;
   bool _requestInProgress = false;
   int _rewardedLoadAttempts = 0;
   int _interstitialLoadAttempts = 0;
@@ -67,6 +68,9 @@ class AdManager extends ChangeNotifier {
     minimumRunsBeforeInterstitial: 2,
   );
 
+  Completer<void>? _initializationCompleter;
+  Timer? _initializationRetryTimer;
+
   final ValueNotifier<BannerAd?> _bannerNotifier =
       ValueNotifier<BannerAd?>(null);
 
@@ -75,20 +79,36 @@ class AdManager extends ChangeNotifier {
   ValueListenable<BannerAd?> get bannerAdListenable => _bannerNotifier;
 
   Future<void> initialize() async {
-    if (_initialized || !_environment.adsEnabled) {
+    if (!_environment.adsEnabled) {
       _initialized = true;
       return;
     }
-    if (_requestInProgress) {
+    final ongoingInitialization = _initializationCompleter;
+    if (ongoingInitialization != null) {
+      await ongoingInitialization.future;
       return;
     }
+    final completer = Completer<void>();
+    _initializationCompleter = completer;
     _requestInProgress = true;
     _sessionStart = DateTime.now();
     _lastInterstitialShownAt = null;
     _gameOverCount = 0;
     _gameOversSinceLastAd = 0;
 
+    var initializationSucceeded = false;
     try {
+      _adsReady = false;
+      final mobileAdsReady = await _ensureMobileAdsInitialized();
+      if (!mobileAdsReady) {
+        _adsReady = false;
+        _logger.warn('Mobile Ads SDK not ready. Scheduling retry.');
+        _scheduleInitializationRetry();
+        return;
+      }
+      _adsReady = true;
+      _initializationRetryTimer?.cancel();
+      _initializationRetryTimer = null;
       await _updateRequestConfiguration();
       if (!_consentManager.initialized) {
         await _consentManager.initialize();
@@ -99,14 +119,30 @@ class AdManager extends ChangeNotifier {
       _loadRewardedAd();
       _loadInterstitialAd();
       await ensureBannerAd();
+      initializationSucceeded = true;
+    } catch (error, stackTrace) {
+      _adsReady = false;
+      _logger.error(
+        'AdManager initialization failed',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      _scheduleInitializationRetry();
     } finally {
-      _initialized = true;
+      _initialized = initializationSucceeded;
       _requestInProgress = false;
+      if (!completer.isCompleted) {
+        completer.complete();
+      }
+      _initializationCompleter = null;
     }
   }
 
   Future<void> ensureBannerAd() async {
     if (!_environment.adsEnabled) {
+      return;
+    }
+    if (!_adsReady) {
       return;
     }
     final existing = _bannerAd;
@@ -142,6 +178,9 @@ class AdManager extends ChangeNotifier {
 
   void registerGameOver(Duration runDuration) {
     if (!_environment.adsEnabled) {
+      return;
+    }
+    if (!_adsReady) {
       return;
     }
     if (runDuration <= Duration.zero) {
@@ -182,7 +221,7 @@ class AdManager extends ChangeNotifier {
         lastRunDuration >= _activeConfig.minimumRunDuration;
 
     final interstitial = _interstitialAd;
-    if (!shouldShow || interstitial == null) {
+    if (!shouldShow || interstitial == null || !_adsReady) {
       if (interstitial == null) {
         _loadInterstitialAd();
       }
@@ -315,7 +354,7 @@ class AdManager extends ChangeNotifier {
   }
 
   void _loadRewardedAd() {
-    if (!_environment.adsEnabled) {
+    if (!_environment.adsEnabled || !_adsReady) {
       return;
     }
     _rewardedLoadAttempts++;
@@ -341,7 +380,7 @@ class AdManager extends ChangeNotifier {
   }
 
   void _loadInterstitialAd() {
-    if (!_environment.adsEnabled) {
+    if (!_environment.adsEnabled || !_adsReady) {
       return;
     }
     _interstitialLoadAttempts++;
@@ -390,6 +429,51 @@ class AdManager extends ChangeNotifier {
     Future<void>.delayed(delay, ensureBannerAd);
   }
 
+  Future<bool> _ensureMobileAdsInitialized() async {
+    try {
+      final status = await MobileAds.instance.initialize();
+      final adapters = status.adapterStatuses;
+      final readyAdapters = adapters.values
+          .where((element) =>
+              element.state == AdapterInitializationState.ready)
+          .length;
+      if (readyAdapters == 0) {
+        final details = adapters.entries
+            .map(
+              (entry) =>
+                  '${entry.key}: ${entry.value.state.name} (${entry.value.description})',
+            )
+            .join('; ');
+        _logger.warn(
+          'No mobile ad adapters reported ready. Details: $details',
+        );
+        return false;
+      }
+      return true;
+    } catch (error, stackTrace) {
+      _logger.error(
+        'Unable to initialize Mobile Ads SDK',
+        error: error,
+        stackTrace: stackTrace,
+      );
+      return false;
+    }
+  }
+
+  void _scheduleInitializationRetry() {
+    if (!_environment.adsEnabled) {
+      return;
+    }
+    if (_initializationRetryTimer?.isActive ?? false) {
+      return;
+    }
+    _initializationRetryTimer = Timer(const Duration(seconds: 30), () {
+      _initializationRetryTimer = null;
+      _initialized = false;
+      unawaited(initialize());
+    });
+  }
+
   Duration _retryDelay(int attempt) {
     final clamped = math.min(6, attempt);
     final seconds = math.min(60, 1 << (clamped - 1));
@@ -436,6 +520,7 @@ class AdManager extends ChangeNotifier {
     _interstitialAd?.dispose();
     _bannerAd?.dispose();
     _bannerNotifier.dispose();
+    _initializationRetryTimer?.cancel();
     super.dispose();
   }
 }

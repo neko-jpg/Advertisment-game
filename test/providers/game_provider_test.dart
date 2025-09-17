@@ -115,6 +115,8 @@ Future<GameProvider> _createGameProvider({
     vsync: const TestVSync(),
   );
 
+  await provider.waitUntilReady();
+
   if (runs.isNotEmpty) {
     provider.setRecentRunsForTesting(runs);
   }
