@@ -679,18 +679,19 @@ class GameProvider with ChangeNotifier {
       _markHudDirty();
     }
     _markWorldDirty();
-  } catch (error, stackTrace) {
-    _ticker?.stop();
-    _performEmergencyCleanup();
-    unawaited(_errorRecoveryManager.handleCrash(error, stackTrace));
-    _pushToast(
-      const GameToast(
-        message: 'Game recovered from an error',
-        icon: Icons.health_and_safety,
-        color: Color(0xFF22C55E),
-        duration: Duration(seconds: 2),
-      ),
-    );
+    } catch (error, stackTrace) {
+      _ticker?.stop();
+      _performEmergencyCleanup();
+      unawaited(_errorRecoveryManager.handleCrash(error, stackTrace));
+      _pushToast(
+        const GameToast(
+          message: 'Game recovered from an error',
+          icon: Icons.health_and_safety,
+          color: Color(0xFF22C55E),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   void revivePlayer() {

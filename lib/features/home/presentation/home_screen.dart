@@ -11,6 +11,7 @@ import '../../../core/env.dart';
 import '../../../core/config/remote_config_service.dart';
 import '../../../core/constants/animation_constants.dart';
 import '../../../core/constants/ui_constants.dart';
+import '../../../core/logging/logger.dart';
 import '../../../game/audio/sound_controller.dart';
 import '../../../game/components/player_skin.dart';
 import '../../../game/engine/game_engine.dart';

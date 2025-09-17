@@ -2,13 +2,15 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-const _kLineLifetimeMs = 3200.0;
+const Duration _kLineLifetime = Duration(milliseconds: 3200);
 const _kInkRechargeDurationMs = 2600.0;
 const _kMinimumPointDistance = 4.0;
 
 /// Manages the player's drawn platforms and ink resource.
 class LineProvider with ChangeNotifier {
   LineProvider();
+
+  static const Duration lineLifetime = _kLineLifetime;
 
   final List<DrawnLine> _lines = <DrawnLine>[];
   DrawnLine? _activeLine;
@@ -101,7 +103,8 @@ class LineProvider with ChangeNotifier {
     final int before = _lines.length;
     _lines.removeWhere(
       (DrawnLine line) =>
-          now.difference(line.createdAt).inMilliseconds > _kLineLifetimeMs * 2,
+          now.difference(line.createdAt).inMilliseconds >
+          _kLineLifetime.inMilliseconds * 2,
     );
     if (before != _lines.length) {
       _bumpSignature();
@@ -132,7 +135,8 @@ class LineProvider with ChangeNotifier {
     final int before = _lines.length;
     _lines.removeWhere(
       (DrawnLine line) =>
-          now.difference(line.createdAt).inMilliseconds > _kLineLifetimeMs,
+          now.difference(line.createdAt).inMilliseconds >
+          _kLineLifetime.inMilliseconds,
     );
     if (before != _lines.length) {
       changed = true;

@@ -19,8 +19,8 @@ android {
     namespace = "com.quickdrawdash.app"
     compileSdk = flutter.compileSdkVersion
 
-    // Align with the Flutter-managed NDK version to avoid mismatch errors.
-    ndkVersion = flutter.ndkVersion
+    // Align with plugins requiring NDK 27 to avoid mismatch errors.
+    ndkVersion = "27.0.12077973"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
