@@ -1,0 +1,144 @@
+# Google Play Store Metadata Configuration
+# Optimized for セルラン上位進出
+
+app_info:
+  title: "Quick Draw Dash - 描いて走る冒険ゲーム"
+  short_description: "描いた線で道を作って走る、革新的なエンドレスランナー！創造性とスキルで最高記録を目指そう"
+  
+  full_description: |
+    🎨 描いて、走って、記録更新！革新的なエンドレスランナー「Quick Draw Dash」
+
+    ✨ 特徴
+    • 指で描いた線が道になる革新的なゲームプレイ
+    • あなたの創造性とスキルが試される独特な体験
+    • 美しいネオン、和風、宇宙テーマで飽きない
+    • 友達と競い合えるリーダーボード機能
+    • 段階的に解放される特別な描画ツール
+
+    🏃‍♂️ ゲームプレイ
+    画面に線を描いて道を作り、キャラクターを導こう！
+    • 直感的な操作で誰でも楽しめる
+    • 上達するほど新しい要素がアンロック
+    • 失敗しても自動で難易度調整
+    • 毎日新しいチャレンジとイベント
+
+    🎯 やりこみ要素
+    • グローバルリーダーボードで世界ランキング挑戦
+    • 限定スキンと描画ツールのコレクション
+    • 週間・月間イベントで特別報酬獲得
+    • 友達招待で限定アイテムゲット
+
+    💎 プレミアム機能
+    • 広告なしでストレスフリーなプレイ
+    • 限定テーマと描画ツールへの早期アクセス
+    • VIPパス会員限定のスペシャルイベント
+    • プレミアム通貨で更なるカスタマイズ
+
+    🌟 なぜQuick Draw Dashが選ばれるのか
+    • 他にない独創的なゲームメカニクス
+    • プレイヤーのスキルレベルに合わせた最適な体験
+    • 創造性を刺激する自由度の高いゲームプレイ
+    • 継続的なアップデートで常に新鮮
+
+    今すぐダウンロードして、描いて走る新感覚の冒険を始めよう！
+
+keywords:
+  primary:
+    - "エンドレスランナー"
+    - "描画ゲーム"
+    - "創造的ゲーム"
+    - "スキルゲーム"
+    - "カジュアルゲーム"
+  
+  secondary:
+    - "無料ゲーム"
+    - "オフラインゲーム"
+    - "競争ゲーム"
+    - "リーダーボード"
+    - "友達と対戦"
+    - "日本語ゲーム"
+
+categories:
+  primary: "GAME_ARCADE"
+  secondary: "GAME_CASUAL"
+
+content_rating: "Everyone"
+
+target_audience:
+  age_groups:
+    - "13-17"
+    - "18-24" 
+    - "25-34"
+    - "35-44"
+  
+  interests:
+    - "Mobile Games"
+    - "Casual Gaming"
+    - "Creative Games"
+    - "Competitive Gaming"
+    - "Skill-based Games"
+
+localization:
+  supported_languages:
+    - "ja-JP" # Japanese (Primary)
+    - "en-US" # English
+    - "ko-KR" # Korean
+    - "zh-CN" # Chinese Simplified
+    - "zh-TW" # Chinese Traditional
+
+pricing:
+  model: "freemium"
+  iap_price_range: "¥120 - ¥980"
+  subscription:
+    vip_pass:
+      price: "¥480/month"
+      benefits:
+        - "広告なし体験"
+        - "限定コンテンツアクセス"
+        - "プレミアム通貨ボーナス"
+        - "VIP限定イベント参加"
+
+aso_optimization:
+  title_optimization:
+    primary_keyword: "Quick Draw Dash"
+    secondary_keywords: ["描画", "エンドレスランナー", "創造的"]
+    
+  description_optimization:
+    keyword_density:
+      "エンドレスランナー": 3
+      "描画": 4
+      "創造的": 2
+      "スキル": 3
+      "競争": 2
+    
+  visual_optimization:
+    icon_focus: "描画要素を強調した魅力的なキャラクター"
+    screenshots_strategy: "ゲームプレイの独自性を強調"
+    video_highlights:
+      - "描画メカニクスのデモンストレーション"
+      - "美しいビジュアルテーマ"
+      - "競争要素とソーシャル機能"
+
+competitive_analysis:
+  direct_competitors:
+    - "Subway Surfers"
+    - "Temple Run"
+    - "Alto's Adventure"
+  
+  differentiation_points:
+    - "独自の描画メカニクス"
+    - "創造性とスキルの組み合わせ"
+    - "日本市場向けローカライゼーション"
+    - "AI駆動の個人化体験"
+
+release_strategy:
+  soft_launch_regions:
+    - "Japan"
+    - "South Korea"
+    - "Taiwan"
+  
+  global_launch_timeline:
+    phase_1: "日本・韓国・台湾 (Week 1-2)"
+    phase_2: "東南アジア (Week 3-4)" 
+    phase_3: "北米・ヨーロッパ (Week 5-6)"
+    phase_4: "グローバル展開 (Week 7+)"
