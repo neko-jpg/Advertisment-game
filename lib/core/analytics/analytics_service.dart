@@ -74,6 +74,18 @@ class AnalyticsService {
     });
   }
 
+  Future<void> logObstacleHit({
+    required String obstacleType,
+    required int score,
+    required double elapsedSeconds,
+  }) async {
+    await _logEvent('obstacle_hit', {
+      'obstacle_type': obstacleType,
+      'score': score,
+      'elapsed_seconds': double.parse(elapsedSeconds.toStringAsFixed(2)),
+    });
+  }
+
   Future<void> _logEvent(String name, Map<String, Object?> parameters) async {
     final analytics = _analytics;
     if (analytics == null) {

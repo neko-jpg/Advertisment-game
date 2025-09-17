@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../features/home/presentation/home_screen.dart';
+import 'package:myapp/features/home/presentation/home_screen.dart';
 
 class AppRouter {
   AppRouter();
@@ -27,3 +27,4 @@ class AppRouter {
 class HomeRoute {
   static const path = '/';
 }
+

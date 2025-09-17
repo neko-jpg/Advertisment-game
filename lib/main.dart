@@ -1,5 +1,11 @@
-import 'app/bootstrap.dart';
+import 'package:flutter/material.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
+
+import 'app/quick_draw_dash_app.dart';
 
 Future<void> main() async {
-  await bootstrap();
+  WidgetsFlutterBinding.ensureInitialized();
+  await MobileAds.instance.initialize();
+  runApp(const QuickDrawDashApp());
 }
+
