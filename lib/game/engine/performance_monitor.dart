@@ -14,15 +14,17 @@ class PerformanceMonitor {
 
   final Queue<double> _frameTimeHistory = Queue<double>();
   final Queue<int> _memoryHistory = Queue<int>();
-  
+
   static const int _maxHistorySize = 120; // 2秒分のフレーム履歴
-  static const double _targetFrameTime = 16.67; // 60FPS = 16.67ms
   static const double _warningFrameTime = 20.0; // 50FPS以下で警告
   static const int _memoryWarningThreshold = 150 * 1024 * 1024; // 150MB
-  
+
   Timer? _memoryTimer;
   bool _isMonitoring = false;
-  
+
+  double _frameTimeSum = 0.0;
+  double _frameTimeMax = 0.0;
+
   // パフォーマンス統計
   double _averageFps = 60.0;
   double _minFps = 60.0;
@@ -76,10 +78,20 @@ class PerformanceMonitor {
       final frameTime = timing.totalSpan.inMicroseconds / 1000.0; // ms
       
       _frameTimeHistory.add(frameTime);
-      if (_frameTimeHistory.length > _maxHistorySize) {
-        _frameTimeHistory.removeFirst();
+      _frameTimeSum += frameTime;
+      if (frameTime > _frameTimeMax) {
+        _frameTimeMax = frameTime;
       }
-      
+      if (_frameTimeHistory.length > _maxHistorySize) {
+        final removed = _frameTimeHistory.removeFirst();
+        _frameTimeSum -= removed;
+        if (_frameTimeHistory.isEmpty) {
+          _frameTimeMax = 0.0;
+        } else if (removed == _frameTimeMax) {
+          _recalculateFrameExtrema();
+        }
+      }
+
       // フレームドロップ検知
       if (frameTime > _warningFrameTime) {
         _droppedFrames++;
@@ -94,14 +106,26 @@ class PerformanceMonitor {
 
   /// FPS統計の更新
   void _updateFpsStatistics() {
-    if (_frameTimeHistory.isEmpty) return;
-    
-    final frameTimes = _frameTimeHistory.toList();
-    final averageFrameTime = frameTimes.reduce((a, b) => a + b) / frameTimes.length;
-    final minFrameTime = frameTimes.reduce((a, b) => a < b ? a : b);
-    
+    final count = _frameTimeHistory.length;
+    if (count == 0) {
+      return;
+    }
+
+    final averageFrameTime = _frameTimeSum / count;
+    final worstFrameTime = _frameTimeMax == 0.0 ? averageFrameTime : _frameTimeMax;
+
     _averageFps = 1000.0 / averageFrameTime;
-    _minFps = 1000.0 / frameTimes.reduce((a, b) => a > b ? a : b);
+    _minFps = 1000.0 / worstFrameTime;
+  }
+
+  void _recalculateFrameExtrema() {
+    var maxFrame = 0.0;
+    for (final value in _frameTimeHistory) {
+      if (value > maxFrame) {
+        maxFrame = value;
+      }
+    }
+    _frameTimeMax = maxFrame;
   }
 
   /// メモリ使用量の更新
@@ -148,23 +172,25 @@ class PerformanceMonitor {
     }
     
     if (_frameTimeHistory.isNotEmpty) {
-      final recentFrames = _frameTimeHistory.toList().reversed.take(30);
-      final variance = _calculateVariance(recentFrames.toList());
+      final frames = _frameTimeHistory.toList(growable: false);
+      var count = 0;
+      var mean = 0.0;
+      var m2 = 0.0;
+      for (var i = frames.length - 1; i >= 0 && count < 30; i--) {
+        final value = frames[i];
+        count++;
+        final delta = value - mean;
+        mean += delta / count;
+        final delta2 = value - mean;
+        m2 += delta * delta2;
+      }
+      final variance = count > 0 ? m2 / count : 0.0;
       if (variance > 25) {
         suggestions.add('フレーム時間のばらつきが大きいです。処理の平準化を検討してください。');
       }
     }
     
     return suggestions;
-  }
-
-  /// 分散の計算
-  double _calculateVariance(List<double> values) {
-    if (values.isEmpty) return 0.0;
-    
-    final mean = values.reduce((a, b) => a + b) / values.length;
-    final squaredDiffs = values.map((x) => (x - mean) * (x - mean));
-    return squaredDiffs.reduce((a, b) => a + b) / values.length;
   }
 
   /// 強制ガベージコレクション（デバッグ用）
@@ -192,6 +218,8 @@ class PerformanceMonitor {
     _peakMemoryUsage = 0;
     _averageFps = 60.0;
     _minFps = 60.0;
+    _frameTimeSum = 0.0;
+    _frameTimeMax = 0.0;
   }
 
   /// パフォーマンスレポートの生成

@@ -89,6 +89,10 @@ class GameProvider with ChangeNotifier {
     null,
   );
   Timer? _toastTimer;
+  final Completer<void> _readinessCompleter = Completer<void>();
+  bool _dependenciesReady = false;
+  bool _startRequestedBeforeReady = false;
+  late final VoidCallback _dependencyListener;
   DifficultyRemoteConfig _remoteDifficulty = const DifficultyRemoteConfig(
     baseSpeedMultiplier: 1.0,
     speedRampIntervalScore: 380,
@@ -190,14 +194,21 @@ class GameProvider with ChangeNotifier {
       onLowBattery: _handleLowBattery,
       onPowerModeChanged: _handlePowerModeChanged,
     );
-    
+
     // エラー回復システム初期化
     _errorRecoveryManager = ErrorRecoveryManager(logger: logger);
     unawaited(_initializeErrorRecovery());
+
+    _dependencyListener = _handleDependencyStateChange;
+    metaProvider.addListener(_dependencyListener);
+    remoteConfigProvider.addListener(_dependencyListener);
+    _handleDependencyStateChange();
   }
 
   // Getters
   GameState get gameState => _gameState;
+  bool get isReadyForPlay => _dependenciesReady && _gameState == GameState.ready;
+  Future<void> waitUntilReady() => _readinessCompleter.future;
   double get playerX => _playerX;
   double get playerY => _playerY;
   int get score => _score;
@@ -302,8 +313,24 @@ class GameProvider with ChangeNotifier {
   }
 
   void startGame() {
-    if (_gameState == GameState.running) return;
+    if (_gameState == GameState.running) {
+      return;
+    }
+    if (!_dependenciesReady) {
+      _startRequestedBeforeReady = true;
+      debugPrint('GameProvider: startGame() called before dependencies ready');
+      return;
+    }
 
+    _performStartGame();
+  }
+
+  void _performStartGame() {
+    if (_gameState == GameState.running || !_dependenciesReady) {
+      return;
+    }
+
+    _startRequestedBeforeReady = false;
     _gameState = GameState.running;
     _score = 0;
     _playerY = GameConstants.playerStartY;
@@ -407,6 +434,23 @@ class GameProvider with ChangeNotifier {
 
     notifyListeners();
     _markHudDirty();
+  }
+
+  void _handleDependencyStateChange() {
+    final ready = metaProvider.isReady && remoteConfigProvider.isReady;
+    if (ready) {
+      if (!_dependenciesReady) {
+        _dependenciesReady = true;
+        if (!_readinessCompleter.isCompleted) {
+          _readinessCompleter.complete();
+        }
+        if (_startRequestedBeforeReady) {
+          _performStartGame();
+        }
+      }
+    } else {
+      _dependenciesReady = false;
+    }
   }
 
   void _gameLoop(Duration elapsed) {
@@ -1178,6 +1222,21 @@ class GameProvider with ChangeNotifier {
         'memoryUsageMB': _performanceMonitor.currentMemoryUsageMB,
       },
     };
+  }
+
+  @override
+  void dispose() {
+    _ticker?.dispose();
+    _toastTimer?.cancel();
+    _worldTick.dispose();
+    _hudTick.dispose();
+    _toastNotifier.dispose();
+    metaProvider.removeListener(_dependencyListener);
+    remoteConfigProvider.removeListener(_dependencyListener);
+    _performanceMonitor.stopMonitoring();
+    _batteryOptimizer.stopOptimization();
+    _errorRecoveryManager.dispose();
+    super.dispose();
   }
 
   /// 最適化設定の更新

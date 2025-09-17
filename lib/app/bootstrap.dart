@@ -14,20 +14,23 @@ import 'app.dart';
 import 'di/injector.dart';
 
 Future<void> bootstrap() async {
-  final binding = WidgetsFlutterBinding.ensureInitialized();
-
-  final environment = AppEnvironment.resolve();
-  if (!serviceLocator.isRegistered<AppEnvironment>()) {
-    serviceLocator.registerSingleton<AppEnvironment>(environment);
-  }
-  if (!serviceLocator.isRegistered<AppLogger>()) {
-    serviceLocator.registerLazySingleton<AppLogger>(
-      () => AppLogger(environment: environment),
-    );
-  }
-  final logger = serviceLocator<AppLogger>();
+  AppLogger? bootstrapLogger;
 
   runZonedGuarded(() async {
+    final binding = WidgetsFlutterBinding.ensureInitialized();
+
+    final environment = AppEnvironment.resolve();
+    if (!serviceLocator.isRegistered<AppEnvironment>()) {
+      serviceLocator.registerSingleton<AppEnvironment>(environment);
+    }
+    if (!serviceLocator.isRegistered<AppLogger>()) {
+      serviceLocator.registerLazySingleton<AppLogger>(
+        () => AppLogger(environment: environment),
+      );
+    }
+    final logger = serviceLocator<AppLogger>();
+    bootstrapLogger = logger;
+
     FlutterError.onError = (details) {
       logger.error(
         'Flutter error: ${details.exceptionAsString()}',
@@ -74,6 +77,10 @@ Future<void> bootstrap() async {
 
     runApp(const QuickDrawDashApp());
   }, (error, stackTrace) {
+    final logger = bootstrapLogger ??
+        (serviceLocator.isRegistered<AppLogger>()
+            ? serviceLocator<AppLogger>()
+            : AppLogger(environment: AppEnvironment.resolve()));
     logger.error(
       'Uncaught zone error',
       error: error,
