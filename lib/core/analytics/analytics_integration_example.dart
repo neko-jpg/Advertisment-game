@@ -10,37 +10,36 @@ import 'ui/analytics_dashboard_widget.dart';
 class AnalyticsIntegrationExample {
   static Future<void> demonstrateAnalyticsSystem() async {
     print('=== Analytics System Integration Demo ===');
-    
+
     // Initialize storage
     final prefs = await SharedPreferences.getInstance();
     final abTestStorage = LocalABTestStorage(preferences: prefs);
     final analyticsStorage = LocalRealtimeAnalyticsStorage(preferences: prefs);
-    
+
     // Initialize engines
     final abTestEngine = ABTestingEngine(storage: abTestStorage);
     final analyticsDashboard = RealtimeAnalyticsDashboard(
       storage: analyticsStorage,
       updateInterval: Duration(seconds: 10),
     );
-    
+
     try {
       // Demo A/B Testing
       await _demonstrateABTesting(abTestEngine);
-      
+
       // Demo Real-time Analytics
       await _demonstrateRealtimeAnalytics(analyticsDashboard);
-      
+
       // Demo Integration
       await _demonstrateIntegration(abTestEngine, analyticsDashboard);
-      
     } finally {
       analyticsDashboard.dispose();
     }
   }
-  
+
   static Future<void> _demonstrateABTesting(ABTestingEngine engine) async {
     print('\n--- A/B Testing Demo ---');
-    
+
     // Create a test for button color optimization
     final buttonColorTest = ABTestConfiguration(
       testId: 'button_color_test_001',
@@ -72,33 +71,47 @@ class AnalyticsIntegrationExample {
         'variant_green': 0.3,
         'variant_orange': 0.3,
       },
-      targetMetrics: ['purchase_conversion', 'button_clicks', 'revenue_per_user'],
+      targetMetrics: [
+        'purchase_conversion',
+        'button_clicks',
+        'revenue_per_user',
+      ],
       startDate: DateTime.now(),
       endDate: DateTime.now().add(Duration(days: 14)),
       minimumSampleSize: 1000,
       significanceLevel: 0.05,
     );
-    
+
     await engine.createABTest(buttonColorTest);
     print('✓ Created A/B test: ${buttonColorTest.name}');
-    
+
     // Simulate user assignments and metric collection
     await _simulateABTestData(engine, buttonColorTest.testId);
-    
+
     // Analyze results
     final results = await engine.getTestResults(buttonColorTest.testId);
     if (results != null) {
       print('✓ Test Results Generated:');
-      print('  - Total Participants: ${results.overallResults.totalParticipants}');
-      print('  - Winning Variant: ${results.overallResults.winningVariant ?? "No clear winner"}');
-      print('  - Recommendation: ${results.overallResults.recommendation.action.name}');
-      print('  - Statistical Significance: ${engine.isStatisticallySignificant(results)}');
+      print(
+        '  - Total Participants: ${results.overallResults.totalParticipants}',
+      );
+      print(
+        '  - Winning Variant: ${results.overallResults.winningVariant ?? "No clear winner"}',
+      );
+      print(
+        '  - Recommendation: ${results.overallResults.recommendation.action.name}',
+      );
+      print(
+        '  - Statistical Significance: ${engine.isStatisticallySignificant(results)}',
+      );
     }
   }
-  
-  static Future<void> _demonstrateRealtimeAnalytics(RealtimeAnalyticsDashboard dashboard) async {
+
+  static Future<void> _demonstrateRealtimeAnalytics(
+    RealtimeAnalyticsDashboard dashboard,
+  ) async {
     print('\n--- Real-time Analytics Demo ---');
-    
+
     // Set up KPI alerts
     final revenueAlert = KPIAlert(
       alertId: 'revenue_drop_alert',
@@ -107,7 +120,7 @@ class AnalyticsIntegrationExample {
       condition: AlertCondition.below,
       severity: AlertSeverity.high,
       isActive: true,
-      description: 'Daily revenue dropped below $800',
+      description: "Daily revenue dropped below \$800",
       actions: [
         AlertAction(
           type: AlertActionType.autoOptimize,
@@ -119,7 +132,7 @@ class AnalyticsIntegrationExample {
         ),
       ],
     );
-    
+
     final crashAlert = KPIAlert(
       alertId: 'crash_rate_alert',
       metricName: 'crashRate',
@@ -135,15 +148,15 @@ class AnalyticsIntegrationExample {
         ),
       ],
     );
-    
+
     await dashboard.addKPIAlert(revenueAlert);
     await dashboard.addKPIAlert(crashAlert);
     print('✓ Added KPI alerts for revenue and crash rate');
-    
+
     // Start monitoring
     await dashboard.startMonitoring();
     print('✓ Started real-time monitoring');
-    
+
     // Simulate some competitor data
     final competitor = CompetitorAnalysis(
       competitorId: 'subway_surfers',
@@ -156,21 +169,23 @@ class AnalyticsIntegrationExample {
       keyFeatures: ['Endless runner', 'Character collection', 'Power-ups'],
       marketShare: 0.35,
     );
-    
+
     await dashboard.updateCompetitorData(competitor);
     print('✓ Updated competitor analysis data');
-    
+
     // Wait for some metrics collection
     await Future.delayed(Duration(seconds: 2));
-    
+
     // Get current metrics
     final metrics = await dashboard.getCurrentMetrics();
     print('✓ Current Metrics:');
     print('  - Active Users: ${metrics.activeUsers}');
     print('  - Revenue: \$${metrics.revenue.toStringAsFixed(2)}');
     print('  - ARPU: \$${metrics.arpu.toStringAsFixed(3)}');
-    print('  - Retention Rate: ${(metrics.retentionRate * 100).toStringAsFixed(1)}%');
-    
+    print(
+      '  - Retention Rate: ${(metrics.retentionRate * 100).toStringAsFixed(1)}%',
+    );
+
     // Generate insights
     final insights = await dashboard.generateInsights();
     if (insights.isNotEmpty) {
@@ -179,16 +194,16 @@ class AnalyticsIntegrationExample {
         print('  - $insight');
       }
     }
-    
+
     dashboard.stopMonitoring();
   }
-  
+
   static Future<void> _demonstrateIntegration(
     ABTestingEngine abEngine,
     RealtimeAnalyticsDashboard dashboard,
   ) async {
     print('\n--- Integration Demo ---');
-    
+
     // Create an A/B test for monetization optimization
     final monetizationTest = ABTestConfiguration(
       testId: 'monetization_optimization_001',
@@ -216,10 +231,10 @@ class AnalyticsIntegrationExample {
       minimumSampleSize: 500,
       significanceLevel: 0.05,
     );
-    
+
     await abEngine.createABTest(monetizationTest);
     print('✓ Created monetization A/B test');
-    
+
     // Set up analytics alert for the A/B test
     final testAlert = KPIAlert(
       alertId: 'ab_test_revenue_alert',
@@ -236,42 +251,48 @@ class AnalyticsIntegrationExample {
         ),
       ],
     );
-    
+
     await dashboard.addKPIAlert(testAlert);
     print('✓ Added analytics alert for A/B test monitoring');
-    
+
     // Simulate integrated workflow
     print('✓ Integration workflow:');
     print('  1. A/B test running with real-time monitoring');
     print('  2. Analytics dashboard tracking test impact on KPIs');
     print('  3. Automated alerts for significant changes');
     print('  4. Auto-optimization based on statistical significance');
-    
+
     // Demonstrate how A/B test results feed into analytics
     await _simulateABTestData(abEngine, monetizationTest.testId);
-    
+
     final testResults = await abEngine.getTestResults(monetizationTest.testId);
-    if (testResults != null && abEngine.isStatisticallySignificant(testResults)) {
-      print('✓ A/B test shows significant results - triggering auto-optimization');
+    if (testResults != null &&
+        abEngine.isStatisticallySignificant(testResults)) {
+      print(
+        '✓ A/B test shows significant results - triggering auto-optimization',
+      );
       await abEngine.autoOptimizeBasedOnResults(monetizationTest.testId);
     }
-    
+
     print('✓ Integration demo completed successfully');
   }
-  
-  static Future<void> _simulateABTestData(ABTestingEngine engine, String testId) async {
+
+  static Future<void> _simulateABTestData(
+    ABTestingEngine engine,
+    String testId,
+  ) async {
     print('  Simulating user data collection...');
-    
+
     // Simulate 200 users
     for (int i = 0; i < 200; i++) {
       final userId = 'user_$i';
       final assignment = await engine.assignUserToTest(userId, testId);
-      
+
       if (assignment != null) {
         // Simulate different conversion rates for variants
         double conversionRate;
         double clickRate;
-        
+
         switch (assignment.variantId) {
           case 'control_blue':
           case 'control_normal':
@@ -294,46 +315,52 @@ class AnalyticsIntegrationExample {
             conversionRate = 0.08;
             clickRate = 0.25;
         }
-        
+
         // Simulate metric events based on probability
         if (i / 200.0 < clickRate) {
-          await engine.recordMetricEvent(ABTestMetricEvent(
-            userId: userId,
-            testId: testId,
-            variantId: assignment.variantId,
-            metricName: 'button_clicks',
-            value: 1.0,
-            timestamp: DateTime.now(),
-          ));
+          await engine.recordMetricEvent(
+            ABTestMetricEvent(
+              userId: userId,
+              testId: testId,
+              variantId: assignment.variantId,
+              metricName: 'button_clicks',
+              value: 1.0,
+              timestamp: DateTime.now(),
+            ),
+          );
         }
-        
+
         if (i / 200.0 < conversionRate) {
-          await engine.recordMetricEvent(ABTestMetricEvent(
-            userId: userId,
-            testId: testId,
-            variantId: assignment.variantId,
-            metricName: 'purchase_conversion',
-            value: 1.0,
-            timestamp: DateTime.now(),
-          ));
-          
+          await engine.recordMetricEvent(
+            ABTestMetricEvent(
+              userId: userId,
+              testId: testId,
+              variantId: assignment.variantId,
+              metricName: 'purchase_conversion',
+              value: 1.0,
+              timestamp: DateTime.now(),
+            ),
+          );
+
           // Revenue event
           final revenue = 2.99 + (i % 3) * 1.0; // Varying revenue
-          await engine.recordMetricEvent(ABTestMetricEvent(
-            userId: userId,
-            testId: testId,
-            variantId: assignment.variantId,
-            metricName: 'revenue_per_user',
-            value: revenue,
-            timestamp: DateTime.now(),
-          ));
+          await engine.recordMetricEvent(
+            ABTestMetricEvent(
+              userId: userId,
+              testId: testId,
+              variantId: assignment.variantId,
+              metricName: 'revenue_per_user',
+              value: revenue,
+              timestamp: DateTime.now(),
+            ),
+          );
         }
       }
     }
-    
+
     print('  ✓ Simulated data for 200 users');
   }
-  
+
   /// Create a Flutter widget that demonstrates the analytics dashboard
   static Widget createDashboardDemo() {
     return FutureBuilder<RealtimeAnalyticsDashboard>(
@@ -344,42 +371,41 @@ class AnalyticsIntegrationExample {
             body: Center(child: CircularProgressIndicator()),
           );
         }
-        
+
         if (snapshot.hasError) {
           return Scaffold(
-            body: Center(
-              child: Text('Error: ${snapshot.error}'),
-            ),
+            body: Center(child: Text('Error: ${snapshot.error}')),
           );
         }
-        
-        return AnalyticsDashboardWidget(
-          dashboard: snapshot.data!,
-        );
+
+        return AnalyticsDashboardWidget(dashboard: snapshot.data!);
       },
     );
   }
-  
-  static Future<RealtimeAnalyticsDashboard> _initializeDashboardForDemo() async {
+
+  static Future<RealtimeAnalyticsDashboard>
+  _initializeDashboardForDemo() async {
     final prefs = await SharedPreferences.getInstance();
     final storage = LocalRealtimeAnalyticsStorage(preferences: prefs);
-    
+
     final dashboard = RealtimeAnalyticsDashboard(
       storage: storage,
       updateInterval: Duration(seconds: 30),
     );
-    
+
     // Add some demo alerts
-    await dashboard.addKPIAlert(KPIAlert(
-      alertId: 'demo_revenue_alert',
-      metricName: 'revenue',
-      threshold: 1000.0,
-      condition: AlertCondition.below,
-      severity: AlertSeverity.medium,
-      isActive: true,
-      description: 'Revenue below $1000',
-    ));
-    
+    await dashboard.addKPIAlert(
+      KPIAlert(
+        alertId: 'demo_revenue_alert',
+        metricName: 'revenue',
+        threshold: 1000.0,
+        condition: AlertCondition.below,
+        severity: AlertSeverity.medium,
+        isActive: true,
+        description: 'Revenue below \$1000',
+      ),
+    );
+
     return dashboard;
   }
 }
