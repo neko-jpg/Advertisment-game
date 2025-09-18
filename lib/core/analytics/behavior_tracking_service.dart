@@ -123,6 +123,8 @@ class BehaviorTrackingService {
       'revives_used': revivesUsed,
       'missions_completed_delta': missionsCompletedDelta,
       'total_coins': totalCoins,
+      'near_misses': stats.nearMisses,
+      'ink_efficiency': stats.inkEfficiency,
     });
   }
 

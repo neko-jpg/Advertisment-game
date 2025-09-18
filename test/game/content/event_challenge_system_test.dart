@@ -57,6 +57,8 @@ void main() {
         jumpsPerformed: 5,
         drawTimeMs: 1000,
         accidentDeath: false,
+        nearMisses: 0,
+        inkEfficiency: 1.0,
       ));
       
       final objective = coinChallenge.objectives.first;
@@ -81,6 +83,8 @@ void main() {
           jumpsPerformed: 5,
           drawTimeMs: 1000,
           accidentDeath: false,
+          nearMisses: 0,
+          inkEfficiency: 1.0,
         ));
       }
       
@@ -111,6 +115,8 @@ void main() {
           jumpsPerformed: 5,
           drawTimeMs: 1000,
           accidentDeath: false,
+          nearMisses: 0,
+          inkEfficiency: 1.0,
         ));
       }
       
@@ -137,6 +143,8 @@ void main() {
         jumpsPerformed: 5,
         drawTimeMs: 1000,
         accidentDeath: false,
+        nearMisses: 0,
+        inkEfficiency: 1.0,
       ));
       
       if (coinMission.type == MissionType.collectCoins) {
@@ -162,6 +170,8 @@ void main() {
         jumpsPerformed: 50,
         drawTimeMs: 10000,
         accidentDeath: false,
+        nearMisses: 0,
+        inkEfficiency: 1.0,
       ));
       
       // Check if any mission was completed
@@ -186,6 +196,8 @@ void main() {
           jumpsPerformed: 5,
           drawTimeMs: 1000,
           accidentDeath: false,
+          nearMisses: 0,
+          inkEfficiency: 1.0,
         ));
       }
       
@@ -204,7 +216,9 @@ void main() {
           usedLine: true,
           jumpsPerformed: 5,
           drawTimeMs: 1000,
-          accidentDeath: false, // No accident
+          accidentDeath: false,
+          nearMisses: 0,
+          inkEfficiency: 1.0, // No accident
         ));
       }
       
@@ -219,7 +233,9 @@ void main() {
         usedLine: true,
         jumpsPerformed: 5,
         drawTimeMs: 1000,
-        accidentDeath: true, // Accident!
+        accidentDeath: true,
+        nearMisses: 0,
+        inkEfficiency: 1.0, // Accident!
       ));
       
       expect(objective.currentValue, equals(0)); // Reset
@@ -244,6 +260,8 @@ void main() {
           jumpsPerformed: 5,
           drawTimeMs: 1000,
           accidentDeath: false,
+          nearMisses: 0,
+          inkEfficiency: 1.0,
         ));
       }
       
@@ -267,6 +285,8 @@ void main() {
           jumpsPerformed: 5,
           drawTimeMs: 1000,
           accidentDeath: false,
+          nearMisses: 0,
+          inkEfficiency: 1.0,
         ));
       }
       
@@ -311,6 +331,8 @@ void main() {
         jumpsPerformed: 5,
         drawTimeMs: 1000,
         accidentDeath: false,
+        nearMisses: 0,
+        inkEfficiency: 1.0,
       ));
       
       // Serialize
@@ -355,6 +377,8 @@ void main() {
           jumpsPerformed: 5,
           drawTimeMs: 1000,
           accidentDeath: false,
+          nearMisses: 0,
+          inkEfficiency: 1.0,
         ));
       }
       
@@ -372,6 +396,8 @@ void main() {
           jumpsPerformed: 5,
           drawTimeMs: 1000,
           accidentDeath: false,
+          nearMisses: 0,
+          inkEfficiency: 1.0,
         ));
       }
       
@@ -395,6 +421,8 @@ void main() {
         jumpsPerformed: 5,
         drawTimeMs: 60000, // 1 minute
         accidentDeath: false,
+        nearMisses: 0,
+        inkEfficiency: 1.0,
       ));
       
       expect(drawingTimeObjective.currentValue, greaterThanOrEqualTo(60000));

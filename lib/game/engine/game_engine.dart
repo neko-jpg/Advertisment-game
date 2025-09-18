@@ -68,6 +68,11 @@ class GameProvider with ChangeNotifier {
   int _revivesUsedThisRun = 0;
   double _invulnerabilityMs = 0.0;
   bool _invulnerabilityWarningShown = false;
+  int _nearMissesThisRun = 0;
+  double _inkProgressIntegralMs = 0.0;
+  double _inkSampledMs = 0.0;
+  String _currentSessionId = '';
+  final math.Random _sessionRandom = math.Random();
   final List<RunStats> _recentRuns = [];
   int _accidentStreak = 0;
   Duration _nextRunGrace = Duration.zero;
@@ -305,6 +310,12 @@ class GameProvider with ChangeNotifier {
     _nextBonusReward = _predictBonusForScore(_nextBonusScore);
   }
 
+  String _generateSessionId() {
+    final int seed =
+        DateTime.now().microsecondsSinceEpoch ^ _sessionRandom.nextInt(0x7fffffff);
+    return seed.toRadixString(36);
+  }
+
   void setScreenSize(Size size) {
     if (_screenSize == size) {
       return;
@@ -362,6 +373,10 @@ class GameProvider with ChangeNotifier {
     _scoreAccumulator = 0.0;
     _lastRunBonusCoins = 0;
     _emergencyInkAvailable = true;
+    _nearMissesThisRun = 0;
+    _inkProgressIntegralMs = 0.0;
+    _inkSampledMs = 0.0;
+    _currentSessionId = _generateSessionId();
 
     metaProvider.refreshDailyMissionsIfNeeded();
     final RunBoost? boost = metaProvider.consumeQueuedBoost();
@@ -422,6 +437,7 @@ class GameProvider with ChangeNotifier {
 
     unawaited(
       analytics.logGameStart(
+        sessionId: _currentSessionId,
         tutorialActive: isTutorialActive,
         revivesUnlocked: _activeUpgrades.maxRevives,
         inkMultiplier: _activeUpgrades.inkRegenMultiplier,
@@ -543,6 +559,8 @@ class GameProvider with ChangeNotifier {
 
     // --- Updates ---
     lineProvider.updateLineLifetimes();
+    _inkProgressIntegralMs += lineProvider.inkProgress * deltaMs;
+    _inkSampledMs += deltaMs;
     if (_emergencyInkAvailable &&
         lineProvider.grantEmergencyInk(_remoteDifficulty.emergencyInkFloor)) {
       _emergencyInkAvailable = false;
@@ -689,6 +707,23 @@ class GameProvider with ChangeNotifier {
         _ticker?.stop();
         notifyListeners();
         return;
+      } else if (!obstacle.nearMissRegistered) {
+        final double playerCenterX = playerRect.center.dx;
+        if (obstacleRect.center.dx <= playerCenterX) {
+          final double horizontalGap =
+              playerRect.left - obstacleRect.right;
+          final double overlapAllowance = 28;
+          final double verticalCenterGap = (playerRect.center.dy -
+                  obstacleRect.center.dy)
+              .abs();
+          final double verticalAllowance =
+              (playerRect.height / 2) + (obstacleRect.height / 2) + 18;
+          if (horizontalGap.abs() <= overlapAllowance &&
+              verticalCenterGap <= verticalAllowance) {
+            obstacle.nearMissRegistered = true;
+            _nearMissesThisRun++;
+          }
+        }
       }
     }
     if (collisionWarning) {
@@ -864,6 +899,7 @@ class GameProvider with ChangeNotifier {
     }
     unawaited(
       analytics.logGameEnd(
+        sessionId: _currentSessionId,
         stats: stats,
         revivesUsed: _revivesUsedThisRun,
         totalCoins: totalCoinsAfterRun,
@@ -900,6 +936,10 @@ class GameProvider with ChangeNotifier {
     _scoreAccumulator = 0.0;
     _activeRunBoost = null;
     _boostRemainingMs = 0.0;
+    _nearMissesThisRun = 0;
+    _inkProgressIntegralMs = 0.0;
+    _inkSampledMs = 0.0;
+    _currentSessionId = '';
     notifyListeners();
   }
 
@@ -912,6 +952,10 @@ class GameProvider with ChangeNotifier {
       jumpsPerformed: _jumpsThisRun,
       drawTimeMs: _drawTimeMsThisRun,
       accidentDeath: _lastRunAccident,
+      nearMisses: _nearMissesThisRun,
+      inkEfficiency: _inkSampledMs <= 0
+          ? 0
+          : (_inkProgressIntegralMs / _inkSampledMs).clamp(0.0, 1.0),
     );
   }
 

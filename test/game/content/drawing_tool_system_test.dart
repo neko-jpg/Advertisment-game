@@ -268,6 +268,8 @@ void main() {
         jumpsPerformed: 5,
         drawTimeMs: 5000, // 5 seconds
         accidentDeath: false,
+        nearMisses: 0,
+        inkEfficiency: 1.0,
       ));
       
       expect(system.totalDrawingTime, equals(5000));

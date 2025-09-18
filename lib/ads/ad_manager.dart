@@ -57,6 +57,7 @@ class AdManager extends ChangeNotifier {
   int _bannerLoadAttempts = 0;
   DateTime _sessionStart = DateTime.now();
   DateTime? _lastInterstitialShownAt;
+  DateTime? _lastRewardedShownAt;
   DateTime? _lastGameOverAt;
   int _gameOverCount = 0;
   int _gameOversSinceLastAd = 0;
@@ -203,7 +204,7 @@ class AdManager extends ChangeNotifier {
       return;
     }
     final now = DateTime.now();
-    final context = AdRequestContext(
+    final requestContext = AdRequestContext(
       trigger: AdTrigger.gameOver,
       elapsedSinceSessionStart: now.difference(_sessionStart),
       elapsedSinceLastInterstitial:
@@ -217,7 +218,8 @@ class AdManager extends ChangeNotifier {
           : now.difference(_lastGameOverAt!),
     );
 
-    final shouldShow = _frequencyController.canShow(context) &&
+    final evaluation = _frequencyController.evaluate(requestContext);
+    final shouldShow = evaluation.allowed &&
         lastRunDuration >= _activeConfig.minimumRunDuration;
 
     final interstitial = _interstitialAd;
@@ -233,6 +235,12 @@ class AdManager extends ChangeNotifier {
     interstitial.fullScreenContentCallback = FullScreenContentCallback(
       onAdShowedFullScreenContent: (ad) {
         onAdOpened?.call();
+        _analytics.logAdShow(
+          trigger: describeEnum(requestContext.trigger),
+          adType: 'interstitial',
+          elapsedSinceLast: requestContext.elapsedSinceLastInterstitial,
+          policyBlockedFlags: evaluation.blockedPolicies,
+        );
         _analytics.logAdWatched(
           placement: placement,
           adType: 'interstitial',
@@ -296,6 +304,17 @@ class AdManager extends ChangeNotifier {
     ad.fullScreenContentCallback = FullScreenContentCallback(
       onAdShowedFullScreenContent: (ad) {
         onAdOpened?.call();
+        final DateTime now = DateTime.now();
+        final Duration elapsed =
+            _lastRewardedShownAt == null
+                ? const Duration(days: 365)
+                : now.difference(_lastRewardedShownAt!);
+        _analytics.logAdShow(
+          trigger: 'rewarded_request',
+          adType: 'rewarded',
+          elapsedSinceLast: elapsed,
+        );
+        _lastRewardedShownAt = now;
       },
       onAdDismissedFullScreenContent: (ad) {
         ad.dispose();

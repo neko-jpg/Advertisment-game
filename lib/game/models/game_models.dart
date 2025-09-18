@@ -13,6 +13,8 @@ class RunStats {
     required this.jumpsPerformed,
     required this.drawTimeMs,
     required this.accidentDeath,
+    required this.nearMisses,
+    required this.inkEfficiency,
   });
 
   final Duration duration;
@@ -22,6 +24,8 @@ class RunStats {
   final int jumpsPerformed;
   final int drawTimeMs;
   final bool accidentDeath;
+  final int nearMisses;
+  final double inkEfficiency;
 }
 
 /// Types of upgrades that can be permanently purchased with coins.

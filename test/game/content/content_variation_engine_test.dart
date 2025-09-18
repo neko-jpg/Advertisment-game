@@ -35,6 +35,8 @@ void main() {
           jumpsPerformed: 5,
           drawTimeMs: 1000,
           accidentDeath: false,
+          nearMisses: 0,
+          inkEfficiency: 1.0,
         ));
       }
 
@@ -64,6 +66,8 @@ void main() {
         jumpsPerformed: 5,
         drawTimeMs: 1000,
         accidentDeath: false,
+        nearMisses: 0,
+        inkEfficiency: 1.0,
       ));
 
       expect(engine.getThemeUnlockProgress(VisualTheme.neon), equals(1.0 / 25.0));
@@ -86,6 +90,8 @@ void main() {
           jumpsPerformed: 5,
           drawTimeMs: 1000,
           accidentDeath: false,
+          nearMisses: 0,
+          inkEfficiency: 1.0,
         ));
       }
 
@@ -130,6 +136,8 @@ void main() {
           jumpsPerformed: 5,
           drawTimeMs: 1000,
           accidentDeath: false,
+          nearMisses: 0,
+          inkEfficiency: 1.0,
         ));
       }
 
@@ -150,6 +158,8 @@ void main() {
           jumpsPerformed: 5,
           drawTimeMs: 1000,
           accidentDeath: false,
+          nearMisses: 0,
+          inkEfficiency: 1.0,
         ));
       }
 
@@ -169,6 +179,8 @@ void main() {
           jumpsPerformed: 5,
           drawTimeMs: 1000,
           accidentDeath: false,
+          nearMisses: 0,
+          inkEfficiency: 1.0,
         ));
       }
 
@@ -186,6 +198,8 @@ void main() {
           jumpsPerformed: 5,
           drawTimeMs: 1000,
           accidentDeath: false,
+          nearMisses: 0,
+          inkEfficiency: 1.0,
         ));
       }
 
@@ -203,6 +217,8 @@ void main() {
           jumpsPerformed: 5,
           drawTimeMs: 1000,
           accidentDeath: false,
+          nearMisses: 0,
+          inkEfficiency: 1.0,
         ));
       }
 
@@ -227,6 +243,8 @@ void main() {
           jumpsPerformed: 5,
           drawTimeMs: 1000,
           accidentDeath: false,
+          nearMisses: 0,
+          inkEfficiency: 1.0,
         ));
       }
       engine.selectTheme(VisualTheme.neon);
