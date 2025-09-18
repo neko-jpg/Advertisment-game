@@ -1,6 +1,80 @@
 import 'dart:math' as math;
 import 'dart:ui';
 
+enum InkType {
+  standard,
+  bouncy,
+  turbo,
+  sticky,
+}
+
+class InkMaterial {
+  const InkMaterial({
+    required this.displayName,
+    required this.description,
+    required this.color,
+    this.bounceMultiplier = 0,
+    this.speedBonus = 0,
+    this.slowPenalty = 0,
+    this.inkRefund = 0,
+  });
+
+  final String displayName;
+  final String description;
+  final Color color;
+  final double bounceMultiplier;
+  final double speedBonus;
+  final double slowPenalty;
+  final double inkRefund;
+}
+
+const Map<InkType, InkMaterial> _kInkMaterials = <InkType, InkMaterial>{
+  InkType.standard: InkMaterial(
+    displayName: 'Standard',
+    description: 'Balanced ink for steady ramps.',
+    color: Color(0xFF60A5FA),
+    bounceMultiplier: 0,
+    speedBonus: 0,
+    slowPenalty: 0,
+    inkRefund: 0,
+  ),
+  InkType.bouncy: InkMaterial(
+    displayName: 'Bounce',
+    description: 'Stores impact and releases it upward.',
+    color: Color(0xFFfb923c),
+    bounceMultiplier: 0.78,
+    speedBonus: 0,
+    slowPenalty: 0,
+    inkRefund: 0,
+  ),
+  InkType.turbo: InkMaterial(
+    displayName: 'Turbo',
+    description: 'Channels momentum into forward bursts.',
+    color: Color(0xFFFACC15),
+    bounceMultiplier: 0,
+    speedBonus: 130,
+    slowPenalty: 0,
+    inkRefund: 0,
+  ),
+  InkType.sticky: InkMaterial(
+    displayName: 'Grip',
+    description: 'Slows the world for precision landings.',
+    color: Color(0xFF34d399),
+    bounceMultiplier: 0,
+    speedBonus: 0,
+    slowPenalty: 110,
+    inkRefund: 0.12,
+  ),
+};
+
+extension InkTypeInfo on InkType {
+  InkMaterial get material => _kInkMaterials[this]!;
+
+  String get displayName => material.displayName;
+
+  Color get color => material.color;
+}
+
 enum ObstacleBehavior {
   groundBlock,
   movingHazard,
@@ -65,10 +139,14 @@ class ProjectileConfig {
 }
 
 class DrawnLine {
-  DrawnLine({required this.points, DateTime? createdAt})
-    : createdAt = createdAt ?? DateTime.now();
+  DrawnLine({
+    required this.points,
+    this.type = InkType.standard,
+    DateTime? createdAt,
+  })  : createdAt = createdAt ?? DateTime.now();
 
   final List<Offset> points;
+  final InkType type;
   final DateTime createdAt;
 }
 

@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../../../core/analytics/analytics_service.dart';
 import '../../../game/game_controller.dart';
 import '../../../game/game_painter.dart';
+import '../../../game/models.dart';
 import '../../../game/audio/sound_controller.dart';
 import '../../../game/state/meta_state.dart';
 import '../../../game/story/story_fragment.dart';
@@ -176,6 +177,11 @@ class _GameViewportState extends State<_GameViewport> {
                       },
                     ),
                   ),
+                ),
+                Positioned(
+                  right: 16,
+                  bottom: 28,
+                  child: const _InkPalette(),
                 ),
                 const _HudOverlay(),
                 if (!controller.tutorialCompleted &&
@@ -402,6 +408,132 @@ class _HudChip extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _InkPalette extends StatelessWidget {
+  const _InkPalette();
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = context.watch<GameController>();
+    final meta = context.watch<MetaProvider>();
+    final List<InkType> types = meta.unlockedInkTypes;
+    if (types.length <= 1) {
+      return const SizedBox.shrink();
+    }
+    final bool interactive = controller.phase == GamePhase.running ||
+        controller.phase == GamePhase.ready;
+    final double opacity = interactive ? 1.0 : 0.35;
+
+    return IgnorePointer(
+      ignoring: !interactive,
+      child: AnimatedOpacity(
+        opacity: opacity,
+        duration: const Duration(milliseconds: 200),
+        child: Material(
+          color: Colors.black.withOpacity(0.38),
+          borderRadius: BorderRadius.circular(20),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final type in types)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: _InkTypeChip(
+                      type: type,
+                      selected: controller.activeInkType == type,
+                      onSelected: () {
+                        context.read<GameController>().setInkType(type);
+                      },
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _InkTypeChip extends StatelessWidget {
+  const _InkTypeChip({
+    required this.type,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final InkType type;
+  final bool selected;
+  final VoidCallback onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final InkMaterial material = type.material;
+    final Color accent = material.color;
+    final IconData icon = _iconForType(type);
+
+    return InkWell(
+      onTap: onSelected,
+      borderRadius: BorderRadius.circular(16),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? accent.withOpacity(0.32) : Colors.white.withOpacity(0.06),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: selected ? accent : Colors.white24,
+            width: selected ? 2 : 1,
+          ),
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color: accent.withOpacity(0.32),
+                    blurRadius: 12,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 16,
+              color: selected ? Colors.white : accent.withOpacity(0.9),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              material.displayName,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: Colors.white,
+                    fontWeight: selected ? FontWeight.bold : FontWeight.w600,
+                    letterSpacing: 0.6,
+                  ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static IconData _iconForType(InkType type) {
+    switch (type) {
+      case InkType.bouncy:
+        return Icons.flip;
+      case InkType.turbo:
+        return Icons.speed;
+      case InkType.sticky:
+        return Icons.grain;
+      case InkType.standard:
+      default:
+        return Icons.brush;
+    }
   }
 }
 

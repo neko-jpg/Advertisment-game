@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/analytics/analytics_service.dart';
 import '../components/player_skin.dart';
+import '../models.dart';
 import '../models/game_models.dart';
 import '../story/story_fragment.dart';
 
@@ -31,6 +32,8 @@ class MetaProvider with ChangeNotifier {
   static const _freeGachaKey = 'meta_free_gacha_available';
   static const _storyProgressKey = 'meta_story_progress';
   static const _leftHandPromptKey = 'meta_left_prompt_seen';
+  static const _unlockedInkTypesKey = 'meta_unlocked_ink_types';
+  static const _selectedInkTypeKey = 'meta_selected_ink_type';
 
   final List<PlayerSkin> _skins = kDefaultSkins;
   final Set<String> _ownedSkinIds = {'default'};
@@ -50,6 +53,8 @@ class MetaProvider with ChangeNotifier {
   bool _initialized = false;
   int _totalCoins = 0;
   String _selectedSkinId = 'default';
+  final Set<InkType> _unlockedInkTypes = {InkType.standard};
+  InkType _selectedInkType = InkType.standard;
 
   bool _leftHandedMode = false;
   double _hapticStrength = 1.0;
@@ -80,7 +85,15 @@ class MetaProvider with ChangeNotifier {
     orElse: () => _skins.first,
   );
 
+  List<InkType> get unlockedInkTypes => List.unmodifiable(
+        InkType.values.where((type) => _unlockedInkTypes.contains(type)),
+      );
+
+  InkType get selectedInkType => _selectedInkType;
+
   bool isSkinOwned(String skinId) => _ownedSkinIds.contains(skinId);
+
+  bool isInkTypeUnlocked(InkType type) => _unlockedInkTypes.contains(type);
 
   bool canAfford(PlayerSkin skin) => _totalCoins >= skin.cost;
 
@@ -222,6 +235,31 @@ class MetaProvider with ChangeNotifier {
     }
     _selectedSkinId = skin.id;
     await _saveSelectedSkin();
+    notifyListeners();
+  }
+
+  Future<void> setPreferredInkType(InkType type) async {
+    if (!isInkTypeUnlocked(type)) {
+      return;
+    }
+    if (_selectedInkType == type) {
+      return;
+    }
+    _selectedInkType = type;
+    await _saveSelectedInkType();
+    notifyListeners();
+  }
+
+  Future<void> unlockInkType(InkType type) async {
+    if (_unlockedInkTypes.contains(type)) {
+      return;
+    }
+    _unlockedInkTypes.add(type);
+    await _saveUnlockedInkTypes();
+    if (!_unlockedInkTypes.contains(_selectedInkType)) {
+      _selectedInkType = InkType.standard;
+      await _saveSelectedInkType();
+    }
     notifyListeners();
   }
 
@@ -388,6 +426,7 @@ class MetaProvider with ChangeNotifier {
   }
 
   void applyRunStats(RunStats stats) {
+    _evaluateInkUnlocks(stats);
     if (_dailyMissions.isEmpty) {
       return;
     }
@@ -495,6 +534,10 @@ class MetaProvider with ChangeNotifier {
       ..clear()
       ..add('default');
     _selectedSkinId = 'default';
+    _unlockedInkTypes
+      ..clear()
+      ..add(InkType.standard);
+    _selectedInkType = InkType.standard;
     _upgradeLevels
       ..clear()
       ..addAll({
@@ -536,6 +579,32 @@ class MetaProvider with ChangeNotifier {
       final selected = prefs.getString(_selectedSkinKey);
       if (selected != null && _ownedSkinIds.contains(selected)) {
         _selectedSkinId = selected;
+      }
+
+      final unlockedInkRaw = prefs.getStringList(_unlockedInkTypesKey);
+      _unlockedInkTypes
+        ..clear()
+        ..add(InkType.standard);
+      if (unlockedInkRaw != null) {
+        for (final entry in unlockedInkRaw) {
+          final InkType? parsed = _parseInkType(entry);
+          if (parsed != null) {
+            _unlockedInkTypes.add(parsed);
+          }
+        }
+      }
+      if (!_unlockedInkTypes.contains(InkType.standard)) {
+        _unlockedInkTypes.add(InkType.standard);
+        unawaited(_saveUnlockedInkTypes());
+      }
+
+      final storedInk = prefs.getString(_selectedInkTypeKey);
+      final InkType? parsedInk = _parseInkType(storedInk);
+      if (parsedInk != null && _unlockedInkTypes.contains(parsedInk)) {
+        _selectedInkType = parsedInk;
+      } else {
+        _selectedInkType = InkType.standard;
+        unawaited(_saveSelectedInkType());
       }
 
       final upgradeRaw = prefs.getString(_upgradeLevelsKey);
@@ -651,6 +720,26 @@ class MetaProvider with ChangeNotifier {
     }
   }
 
+  Future<void> _saveUnlockedInkTypes() async {
+    final prefs = _prefs;
+    if (prefs != null) {
+      final values = _unlockedInkTypes
+          .map((type) => describeEnum(type))
+          .toList(growable: false);
+      await prefs.setStringList(_unlockedInkTypesKey, values);
+    }
+  }
+
+  Future<void> _saveSelectedInkType() async {
+    final prefs = _prefs;
+    if (prefs != null) {
+      await prefs.setString(
+        _selectedInkTypeKey,
+        describeEnum(_selectedInkType),
+      );
+    }
+  }
+
   Future<void> _saveUpgradeLevels() async {
     final prefs = _prefs;
     if (prefs != null) {
@@ -747,6 +836,50 @@ class MetaProvider with ChangeNotifier {
       notifyListeners();
     }
     return boost;
+  }
+
+  InkType? _parseInkType(String? raw) {
+    if (raw == null || raw.isEmpty) {
+      return null;
+    }
+    for (final type in InkType.values) {
+      if (describeEnum(type) == raw) {
+        return type;
+      }
+    }
+    final index = int.tryParse(raw);
+    if (index != null && index >= 0 && index < InkType.values.length) {
+      return InkType.values[index];
+    }
+    return null;
+  }
+
+  void _evaluateInkUnlocks(RunStats stats) {
+    if (!isInkTypeUnlocked(InkType.bouncy)) {
+      final bool enduranceUnlock =
+          stats.duration.inSeconds >= 55 && stats.jumpsPerformed >= 32;
+      final bool nearMissUnlock = stats.nearMisses >= 4;
+      if (enduranceUnlock || nearMissUnlock) {
+        unawaited(unlockInkType(InkType.bouncy));
+      }
+    }
+    if (!isInkTypeUnlocked(InkType.turbo)) {
+      final bool scoreUnlock = stats.score >= 1100;
+      final bool coinRushUnlock =
+          stats.coins >= 42 && stats.duration.inSeconds >= 60;
+      if (scoreUnlock || coinRushUnlock) {
+        unawaited(unlockInkType(InkType.turbo));
+      }
+    }
+    if (!isInkTypeUnlocked(InkType.sticky)) {
+      final bool controlUnlock =
+          stats.drawTimeMs >= 9000 && stats.inkEfficiency >= 0.68;
+      final bool safetyUnlock =
+          !stats.accidentDeath && stats.inkEfficiency >= 0.75;
+      if (controlUnlock || safetyUnlock) {
+        unawaited(unlockInkType(InkType.sticky));
+      }
+    }
   }
 
   List<DailyMission> _generateDailyMissions(DateTime today) {
