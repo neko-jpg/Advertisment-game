@@ -71,6 +71,25 @@ class GamePainter extends CustomPainter {
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
   );
+  static final LinearGradient _hopperGradient = const LinearGradient(
+    colors: [Color(0xFFFB923C), Color(0xFFF97316)],
+    begin: Alignment.bottomCenter,
+    end: Alignment.topCenter,
+  );
+  static final LinearGradient _spitterGradient = const LinearGradient(
+    colors: [Color(0xFF7C3AED), Color(0xFFA855F7)],
+    begin: Alignment.bottomCenter,
+    end: Alignment.topCenter,
+  );
+  static final LinearGradient _projectileGradient = const LinearGradient(
+    colors: [Color(0xFF38BDF8), Color(0xFF0EA5E9)],
+    begin: Alignment.bottomCenter,
+    end: Alignment.topCenter,
+  );
+  static final Paint _projectileGlowPaint =
+      Paint()
+        ..color = const Color(0xFF38BDF8).withOpacity(0.45)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12);
   static final Paint _ceilingPaint =
       Paint()..color = const Color(0xFF1E40AF).withOpacity(0.85);
 
@@ -137,6 +156,10 @@ class GamePainter extends CustomPainter {
 
   void _drawObstacles(Canvas canvas) {
     for (final Obstacle obstacle in obstacles) {
+      if (obstacle.behavior == ObstacleBehavior.spitProjectile) {
+        _drawSpitProjectile(canvas, obstacle);
+        continue;
+      }
       final RRect rrect = RRect.fromRectAndRadius(
         obstacle.rect,
         obstacle.behavior == ObstacleBehavior.ceiling
@@ -154,6 +177,18 @@ class GamePainter extends CustomPainter {
               ..color = const Color(0xFF38BDF8).withOpacity(0.22)
               ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 18);
         canvas.drawRRect(rrect.inflate(6), aura);
+      } else if (obstacle.behavior == ObstacleBehavior.floater) {
+        final Paint aura =
+            Paint()
+              ..color = const Color(0xFF818CF8).withOpacity(0.18)
+              ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 20);
+        canvas.drawRRect(rrect.inflate(8), aura);
+      } else if (obstacle.behavior == ObstacleBehavior.spitter) {
+        final Paint glow =
+            Paint()
+              ..color = const Color(0xFFA855F7).withOpacity(0.2)
+              ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 14);
+        canvas.drawRRect(rrect.inflate(5), glow);
       }
     }
   }
@@ -164,14 +199,33 @@ class GamePainter extends CustomPainter {
         return Paint()
           ..shader = _movingObstacleGradient.createShader(obstacle.rect);
       case ObstacleBehavior.hoveringShard:
+      case ObstacleBehavior.floater:
         return Paint()
           ..shader = _hoverObstacleGradient.createShader(obstacle.rect);
       case ObstacleBehavior.ceiling:
         return _ceilingPaint;
+      case ObstacleBehavior.hopper:
+        return Paint()
+          ..shader = _hopperGradient.createShader(obstacle.rect);
+      case ObstacleBehavior.spitter:
+        return Paint()
+          ..shader = _spitterGradient.createShader(obstacle.rect);
+      case ObstacleBehavior.spitProjectile:
+        return Paint()
+          ..shader = _projectileGradient.createShader(obstacle.rect);
       case ObstacleBehavior.groundBlock:
       default:
         return _obstaclePaint;
     }
+  }
+
+  void _drawSpitProjectile(Canvas canvas, Obstacle obstacle) {
+    final RRect body =
+        RRect.fromRectAndRadius(obstacle.rect, const Radius.circular(10));
+    canvas.drawRRect(body.inflate(6), _projectileGlowPaint);
+    final Paint projectilePaint = Paint()
+      ..shader = _projectileGradient.createShader(obstacle.rect);
+    canvas.drawRRect(body, projectilePaint);
   }
 
   void _drawCoins(Canvas canvas) {
