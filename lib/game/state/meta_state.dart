@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../components/player_skin.dart';
 import '../models/game_models.dart';
+import '../story/story_fragment.dart';
 
 class MetaProvider with ChangeNotifier {
   MetaProvider() {
@@ -25,6 +26,7 @@ class MetaProvider with ChangeNotifier {
   static const _nextLoginKey = 'meta_next_login';
   static const _gachaPityKey = 'meta_gacha_pity';
   static const _freeGachaKey = 'meta_free_gacha_available';
+  static const _storyProgressKey = 'meta_story_progress';
   static const _leftHandPromptKey = 'meta_left_prompt_seen';
 
   final List<PlayerSkin> _skins = kDefaultSkins;
@@ -37,6 +39,9 @@ class MetaProvider with ChangeNotifier {
   List<UpgradeDefinition> _upgradeDefinitions = List.of(
     _defaultUpgradeDefinitions,
   );
+  final List<StoryFragment> _storyFragments = StoryFragmentLibrary.fragments;
+  final Map<String, StoryProgressEntry> _storyProgress = {};
+  StoryFragment? _pendingStoryFragment;
 
   SharedPreferences? _prefs;
   bool _initialized = false;
@@ -83,6 +88,17 @@ class MetaProvider with ChangeNotifier {
   bool get oneTapMode => _oneTapMode;
   bool get hasShownLeftHandPrompt => _hasShownLeftHandPrompt;
   bool get canClaimFreeGacha => _freeGachaAvailable;
+  List<StoryFragment> get storyFragments => List.unmodifiable(_storyFragments);
+  List<StoryFragment> get unlockedStoryFragments => _storyFragments
+      .where((fragment) => _storyProgress[fragment.id]?.unlockedAt != null)
+      .toList(growable: false);
+  StoryFragment? get pendingStoryFragment => _pendingStoryFragment;
+
+  bool isStoryFragmentUnlocked(String fragmentId) =>
+      _storyProgress[fragmentId]?.unlockedAt != null;
+
+  bool isStoryFragmentViewed(String fragmentId) =>
+      _storyProgress[fragmentId]?.viewed ?? false;
 
   UpgradeSnapshot get upgradeSnapshot => UpgradeSnapshot(
     inkRegenMultiplier: 1.0 + upgradeLevel(UpgradeType.inkRegen) * 0.12,
@@ -399,6 +415,53 @@ class MetaProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  StoryFragment? unlockStoryFragmentForRun(RunStats stats) {
+    StoryFragment? unlocked;
+    for (final fragment in _storyFragments) {
+      final progress = _storyProgress[fragment.id];
+      if (progress?.unlockedAt != null) {
+        continue;
+      }
+      if (!fragment.unlockCondition.isSatisfiedBy(stats)) {
+        continue;
+      }
+      final entry = StoryProgressEntry(
+        fragmentId: fragment.id,
+        unlockedAt: DateTime.now(),
+        viewed: false,
+      );
+      _storyProgress[fragment.id] = entry;
+      unlocked = fragment;
+      _pendingStoryFragment = fragment;
+      break;
+    }
+    if (unlocked != null) {
+      unawaited(_saveStoryProgress());
+      notifyListeners();
+    }
+    return unlocked;
+  }
+
+  void markStoryFragmentViewed(String fragmentId) {
+    final progress = _storyProgress[fragmentId];
+    if (progress == null) {
+      return;
+    }
+    var changed = false;
+    if (!progress.viewed) {
+      progress.viewed = true;
+      changed = true;
+    }
+    if (_pendingStoryFragment?.id == fragmentId) {
+      _pendingStoryFragment = null;
+      changed = true;
+    }
+    if (changed) {
+      unawaited(_saveStoryProgress());
+      notifyListeners();
+    }
+  }
+
   Future<void> refreshDailyMissionsIfNeeded() async {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -442,6 +505,8 @@ class MetaProvider with ChangeNotifier {
     _freeGachaAvailable = true;
     _hasShownLeftHandPrompt = false;
     _queuedBoost = null;
+    _storyProgress.clear();
+    _pendingStoryFragment = null;
   }
 
   Future<void> _loadFromStorage() async {
@@ -516,6 +581,33 @@ class MetaProvider with ChangeNotifier {
       _gachaPityCounter = prefs.getInt(_gachaPityKey) ?? 0;
       _freeGachaAvailable = prefs.getBool(_freeGachaKey) ?? true;
       _hasShownLeftHandPrompt = prefs.getBool(_leftHandPromptKey) ?? false;
+      final storyRaw = prefs.getString(_storyProgressKey);
+      if (storyRaw != null) {
+        try {
+          final decoded = json.decode(storyRaw);
+          if (decoded is List) {
+            _storyProgress.clear();
+            for (final entry in decoded) {
+              if (entry is Map<String, dynamic>) {
+                final progress = StoryProgressEntry.fromJson(entry);
+                if (StoryFragmentLibrary.byId(progress.fragmentId) != null) {
+                  _storyProgress[progress.fragmentId] = progress;
+                }
+              } else if (entry is Map) {
+                final jsonEntry = entry.cast<String, dynamic>();
+                final progress = StoryProgressEntry.fromJson(jsonEntry);
+                if (StoryFragmentLibrary.byId(progress.fragmentId) != null) {
+                  _storyProgress[progress.fragmentId] = progress;
+                }
+              }
+            }
+          }
+        } catch (error, stackTrace) {
+          debugPrint('Failed to parse story progress: $error');
+          debugPrintStack(stackTrace: stackTrace);
+          _storyProgress.clear();
+        }
+      }
     } catch (error, stackTrace) {
       debugPrint('MetaProvider storage load failed: $error');
       debugPrintStack(stackTrace: stackTrace);
@@ -619,6 +711,17 @@ class MetaProvider with ChangeNotifier {
     if (prefs != null) {
       await prefs.setBool(_freeGachaKey, _freeGachaAvailable);
     }
+  }
+
+  Future<void> _saveStoryProgress() async {
+    final prefs = _prefs;
+    if (prefs == null) {
+      return;
+    }
+    final list = _storyProgress.values
+        .map((entry) => entry.toJson())
+        .toList(growable: false);
+    await prefs.setString(_storyProgressKey, json.encode(list));
   }
 
   void queueRunBoost(RunBoost boost) {

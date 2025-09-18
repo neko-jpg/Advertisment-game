@@ -13,6 +13,7 @@ import '../services/player_wallet.dart';
 import 'audio/sound_controller.dart';
 import 'models.dart';
 import 'models/game_models.dart' show RunStats;
+import 'state/meta_state.dart';
 
 enum GamePhase { loading, ready, running, gameOver }
 
@@ -25,6 +26,7 @@ class GameController extends ChangeNotifier {
     required this.adService,
     required this.analytics,
     required this.wallet,
+    required this.meta,
   }) {
     _ticker = vsync.createTicker(_handleTick);
   }
@@ -34,6 +36,7 @@ class GameController extends ChangeNotifier {
   final AdService adService;
   final AnalyticsService analytics;
   final PlayerWallet wallet;
+  final MetaProvider meta;
 
   late final Ticker _ticker;
   GamePhase _phase = GamePhase.loading;
@@ -855,6 +858,8 @@ class GameController extends ChangeNotifier {
       drawTimeMs: _drawTimeMs.round(),
       accidentDeath: _lastDeathCause != null,
     );
+    meta.applyRunStats(runStats);
+    meta.unlockStoryFragmentForRun(runStats);
     final int revivesUsed = _reviveAvailable ? 0 : 1;
     unawaited(
       analytics.logGameEnd(

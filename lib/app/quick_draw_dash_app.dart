@@ -7,6 +7,7 @@ import 'package:myapp/features/home/presentation/home_screen.dart';
 import '../core/analytics/analytics_service.dart';
 import '../core/env.dart';
 import '../game/audio/sound_controller.dart';
+import '../game/state/meta_state.dart';
 import '../monetization/storefront_service.dart';
 import '../services/ad_service.dart';
 import '../services/player_wallet.dart';
@@ -31,6 +32,9 @@ class QuickDrawDashApp extends StatelessWidget {
       providers: [
         Provider<AppEnvironment>.value(value: environment),
         Provider<AnalyticsService>.value(value: analytics),
+        ChangeNotifierProvider<MetaProvider>(
+          create: (_) => MetaProvider(),
+        ),
         ChangeNotifierProvider<PlayerWallet>(
           create: (_) {
             final wallet = PlayerWallet();
