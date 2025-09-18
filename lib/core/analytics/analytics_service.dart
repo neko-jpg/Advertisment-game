@@ -2,6 +2,7 @@ import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../game/models/game_models.dart';
+import '../kpi/session_metrics_tracker.dart';
 import 'analytics_events.dart';
 
 /// Lightweight wrapper around [FirebaseAnalytics] that exposes
@@ -127,6 +128,29 @@ class AnalyticsService {
       AnalyticsParamKeys.missionId: missionId,
       AnalyticsParamKeys.missionType: missionType,
       AnalyticsParamKeys.reward: reward,
+    });
+  }
+
+  Future<void> logKpiSnapshot({required KpiSnapshot snapshot}) async {
+    await _logEvent(AnalyticsEventKeys.kpiSnapshot, {
+      AnalyticsParamKeys.totalSessions: snapshot.totalSessions,
+      AnalyticsParamKeys.completedSessions: snapshot.completedSessions,
+      AnalyticsParamKeys.averageSessionMinutes:
+          double.parse(snapshot.averageSessionMinutes.toStringAsFixed(2)),
+      AnalyticsParamKeys.sessionsPerDay:
+          double.parse(snapshot.sessionsPerDay.toStringAsFixed(2)),
+      AnalyticsParamKeys.sessionsToday: snapshot.sessionsToday,
+      AnalyticsParamKeys.rewardedViewRate:
+          double.parse(snapshot.rewardedViewRate.toStringAsFixed(3)),
+      AnalyticsParamKeys.retentionD1: snapshot.retentionD1 != null
+          ? double.parse(snapshot.retentionD1!.toStringAsFixed(3))
+          : null,
+      AnalyticsParamKeys.retentionD7: snapshot.retentionD7 != null
+          ? double.parse(snapshot.retentionD7!.toStringAsFixed(3))
+          : null,
+      AnalyticsParamKeys.retentionD30: snapshot.retentionD30 != null
+          ? double.parse(snapshot.retentionD30!.toStringAsFixed(3))
+          : null,
     });
   }
 

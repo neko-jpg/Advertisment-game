@@ -4,6 +4,7 @@ import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/analytics/analytics_service.dart';
+import '../../../core/kpi/session_metrics_tracker.dart';
 import '../../../game/game_controller.dart';
 import '../../../game/game_painter.dart';
 import '../../../game/models.dart';
@@ -14,6 +15,7 @@ import '../../../services/ad_service.dart';
 import '../../../services/player_wallet.dart';
 import '../../store/storefront_sheet.dart';
 import '../../../monetization/storefront_service.dart';
+import 'meta_progress_sheet.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -29,6 +31,7 @@ class _HomeScreenState extends State<HomeScreen>
   late AdService _adService;
   late PlayerWallet _wallet;
   late AnalyticsService _analytics;
+  late SessionMetricsTracker _sessionMetrics;
 
   @override
   void initState() {
@@ -38,6 +41,10 @@ class _HomeScreenState extends State<HomeScreen>
     _adService = context.read<AdService>();
     _wallet = context.read<PlayerWallet>();
     _analytics = context.read<AnalyticsService>();
+    _sessionMetrics = context.read<SessionMetricsTracker>();
+    if (!_sessionMetrics.isInitialized) {
+      unawaited(_sessionMetrics.initialize());
+    }
     final meta = context.read<MetaProvider>();
     _controller = GameController(
       vsync: this,
@@ -46,6 +53,7 @@ class _HomeScreenState extends State<HomeScreen>
       analytics: _analytics,
       wallet: _wallet,
       meta: meta,
+      sessionMetrics: _sessionMetrics,
     )..initialize();
     if (!_adService.isInitialized) {
       unawaited(_adService.initialize());
@@ -876,6 +884,7 @@ class _MonetizationBar extends StatelessWidget {
     final wallet = context.watch<PlayerWallet>();
     final controller = context.watch<GameController>();
     final store = context.watch<StorefrontService>();
+    final sessionMetrics = context.watch<SessionMetricsTracker>();
     final bool multiplierActive = wallet.coinMultiplier > 1.0;
     final Duration? remaining = wallet.coinMultiplierRemaining;
     final bool adsRemoved = wallet.adsRemoved;
@@ -883,6 +892,7 @@ class _MonetizationBar extends StatelessWidget {
     final int lastReward = controller.lastRunAwardedCoins;
     final bool showLastReward =
         controller.phase == GamePhase.gameOver && lastReward > 0;
+    final bool trackerReady = sessionMetrics.isInitialized;
 
     final String boostLabel =
         multiplierActive
@@ -980,6 +990,20 @@ class _MonetizationBar extends StatelessWidget {
               const SizedBox(width: 12),
               FilledButton.icon(
                 onPressed:
+                    trackerReady ? () => showMetaProgressSheet(context) : null,
+                icon: trackerReady
+                    ? const Icon(Icons.insights_outlined)
+                    : const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                label: Text(trackerReady ? 'Progress' : 'Loading'),
+                style: FilledButton.styleFrom(minimumSize: const Size(0, 40)),
+              ),
+              const SizedBox(width: 8),
+              FilledButton.icon(
+                onPressed:
                     storeBusy ? null : () => showStorefrontSheet(context),
                 icon:
                     storeBusy
@@ -990,6 +1014,7 @@ class _MonetizationBar extends StatelessWidget {
                         )
                         : const Icon(Icons.storefront_outlined),
                 label: Text(storeBusy ? 'Loading' : 'Shop'),
+                style: FilledButton.styleFrom(minimumSize: const Size(0, 40)),
               ),
             ],
           ),
