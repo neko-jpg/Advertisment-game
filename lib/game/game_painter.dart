@@ -41,23 +41,7 @@ class GamePainter extends CustomPainter {
         ..color = const Color(0xFFFDE68A).withOpacity(0.6)
         ..style = PaintingStyle.stroke
         ..strokeWidth = 3;
-  static final Paint _linePaint =
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round
-        ..strokeWidth = 8
-        ..shader = const LinearGradient(
-          colors: [Color(0xFF38BDF8), Color(0xFF8B5CF6)],
-        ).createShader(Rect.fromLTWH(0, 0, 200, 0));
-  static final Paint _lineGlowPaint =
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeCap = StrokeCap.round
-        ..strokeJoin = StrokeJoin.round
-        ..strokeWidth = 14
-        ..color = const Color(0xFF38BDF8).withOpacity(0.25)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10);
+  static const double _kLineLifetimeMs = 2200;
   static final Paint _playerPaint = Paint()..color = const Color(0xFF22D3EE);
   static final Paint _playerGlowPaint =
       Paint()
@@ -151,13 +135,56 @@ class GamePainter extends CustomPainter {
   }
 
   void _drawLines(Canvas canvas) {
+    if (lines.isEmpty) {
+      return;
+    }
+    final DateTime now = DateTime.now();
     for (final DrawnLine line in lines) {
-      final path = Path()..moveTo(line.points.first.dx, line.points.first.dy);
+      if (line.points.length < 2) {
+        continue;
+      }
+      final Path path = Path()..moveTo(line.points.first.dx, line.points.first.dy);
       for (var i = 1; i < line.points.length; i++) {
         path.lineTo(line.points[i].dx, line.points[i].dy);
       }
-      canvas.drawPath(path, _lineGlowPaint);
-      canvas.drawPath(path, _linePaint);
+      final double ageMs =
+          now.difference(line.createdAt).inMilliseconds.toDouble();
+      final double fade = (1 - ageMs / _kLineLifetimeMs).clamp(0.0, 1.0);
+      final InkMaterial material = line.type.material;
+      final double strokeWidth = switch (line.type) {
+        InkType.sticky => 10,
+        InkType.turbo => 7,
+        _ => 8,
+      };
+      final Paint glowPaint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..strokeWidth = strokeWidth + 6
+        ..color = material.color.withOpacity(0.16 * fade)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12);
+      final Paint strokePaint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..strokeWidth = strokeWidth;
+
+      if (line.type == InkType.turbo) {
+        final Rect bounds = path.getBounds().inflate(12);
+        strokePaint.shader = LinearGradient(
+          colors: [
+            material.color.withOpacity(0.35 + 0.55 * fade),
+            const Color(0xFFFFEDD5).withOpacity(0.25 * fade),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ).createShader(bounds);
+      } else {
+        strokePaint.color = material.color.withOpacity(0.32 + 0.68 * fade);
+      }
+
+      canvas.drawPath(path, glowPaint);
+      canvas.drawPath(path, strokePaint);
     }
   }
 

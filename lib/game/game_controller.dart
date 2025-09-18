@@ -33,6 +33,7 @@ class GameController extends ChangeNotifier {
     required this.meta,
   }) {
     _ticker = vsync.createTicker(_handleTick);
+    meta.addListener(_handleMetaChanged);
   }
 
   final TickerProvider vsync;
@@ -69,6 +70,9 @@ class GameController extends ChangeNotifier {
   static const double _inkRechargePerSecond = 0.68;
   static const double _inkDrawCostPerSecond = 0.82;
   static const double _inkRechargeDelaySeconds = 0.35;
+  InkType _activeInkType = InkType.standard;
+  double _speedBonus = 0;
+  double _slowPenalty = 0;
 
   final List<Obstacle> _obstacles = <Obstacle>[];
   final List<Coin> _coins = <Coin>[];
@@ -132,6 +136,7 @@ class GameController extends ChangeNotifier {
   UnmodifiableListView<Coin> get coins => UnmodifiableListView(_coins);
   UnmodifiableListView<LandingDust> get landingDust =>
       UnmodifiableListView(_landingDust);
+  InkType get activeInkType => _activeInkType;
 
   Future<void> initialize() async {
     _phase = GamePhase.loading;
@@ -155,6 +160,8 @@ class GameController extends ChangeNotifier {
       debugPrintStack(stackTrace: stackTrace);
       _bestScore = 0;
     }
+
+    _activeInkType = meta.selectedInkType;
 
     _phase = GamePhase.ready;
     notifyListeners();
@@ -263,7 +270,10 @@ class GameController extends ChangeNotifier {
     if (position.dx < _viewport.width * 0.45) {
       return false;
     }
-    _activeLine = DrawnLine(points: <Offset>[position]);
+    _activeLine = DrawnLine(
+      points: <Offset>[position],
+      type: _activeInkType,
+    );
     _lines.add(_activeLine!);
     _usedLineThisRun = true;
     _ink = math.max(0, _ink - 0.12);
@@ -307,6 +317,18 @@ class GameController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setInkType(InkType type) {
+    if (_activeInkType == type) {
+      return;
+    }
+    if (!meta.isInkTypeUnlocked(type)) {
+      return;
+    }
+    _activeInkType = type;
+    meta.setPreferredInkType(type);
+    notifyListeners();
+  }
+
   Future<bool> revive() async {
     if (!canRevive) {
       return false;
@@ -345,6 +367,9 @@ class GameController extends ChangeNotifier {
     _ink = 1.0;
     _inkCooldown = 0;
     _landingDust.clear();
+    _speedBonus = 0;
+    _slowPenalty = 0;
+    _activeInkType = meta.selectedInkType;
     _obstacles.removeWhere(
       (obstacle) => obstacle.rect.left < _playerPosition.dx + 120,
     );
@@ -361,6 +386,20 @@ class GameController extends ChangeNotifier {
       _phase == GamePhase.gameOver &&
       _reviveAvailable &&
       adService.hasRewardedAd;
+
+  void _handleMetaChanged() {
+    final InkType preferred = meta.selectedInkType;
+    final bool preferredUnlocked = meta.isInkTypeUnlocked(preferred);
+    if (!meta.isInkTypeUnlocked(_activeInkType) && preferredUnlocked) {
+      _activeInkType = preferred;
+      notifyListeners();
+      return;
+    }
+    if (preferredUnlocked && _activeInkType != preferred) {
+      _activeInkType = preferred;
+      notifyListeners();
+    }
+  }
 
   void _resetRunState() {
     _lines.clear();
@@ -393,6 +432,9 @@ class GameController extends ChangeNotifier {
     _inkProgressIntegral = 0;
     _inkSampleTime = 0;
     _activeSessionId = _generateSessionId();
+    _activeInkType = meta.selectedInkType;
+    _speedBonus = 0;
+    _slowPenalty = 0;
     _initializeChunkPlanner();
   }
 
@@ -530,6 +572,12 @@ class GameController extends ChangeNotifier {
     }
   }
 
+  double get _effectiveScrollSpeed {
+    final double boosted = _scrollSpeed + _speedBonus;
+    final double slowed = boosted - _slowPenalty;
+    return math.max(160, math.min(600, slowed));
+  }
+
   double? _nextPlannedObstacleTime() {
     if (_plannedObstacles.isEmpty) {
       return null;
@@ -539,7 +587,7 @@ class GameController extends ChangeNotifier {
     if (distance <= 0) {
       return 0;
     }
-    final double speed = math.max(_scrollSpeed, 120);
+    final double speed = math.max(_effectiveScrollSpeed, 120);
     return distance / speed;
   }
 
@@ -748,11 +796,48 @@ class GameController extends ChangeNotifier {
         if (_velocityY >= 0 &&
             playerBottom >= yOnLine - 6 &&
             playerBottom <= yOnLine + 24) {
-          _playerPosition = Offset(_playerPosition.dx, yOnLine - _playerRadius);
-          _velocityY = 0;
-          _onGround = true;
-          _coyoteTimer = _coyoteDuration;
-          return;
+          final double fallVelocity = _velocityY;
+          final InkMaterial material = line.type.material;
+          switch (line.type) {
+            case InkType.bouncy:
+              _playerPosition = Offset(_playerPosition.dx, yOnLine - _playerRadius);
+              final double bounceStrength = math.max(
+                420,
+                fallVelocity.abs() * (1.0 + material.bounceMultiplier),
+              );
+              _velocityY = -bounceStrength;
+              _onGround = false;
+              _coyoteTimer = 0;
+              _registerLandingImpact(fallVelocity);
+              soundController.playJumpSfx();
+              return;
+            case InkType.turbo:
+              _playerPosition = Offset(_playerPosition.dx, yOnLine - _playerRadius);
+              _velocityY = 0;
+              _onGround = true;
+              _coyoteTimer = math.max(0.06, _coyoteDuration * 0.65);
+              _speedBonus = math.min(_speedBonus + material.speedBonus, 200);
+              _registerLandingImpact(fallVelocity);
+              return;
+            case InkType.sticky:
+              _playerPosition = Offset(_playerPosition.dx, yOnLine - _playerRadius);
+              _velocityY = 0;
+              _onGround = true;
+              _coyoteTimer = _coyoteDuration * 1.75;
+              _slowPenalty = math.min(_slowPenalty + material.slowPenalty, 150);
+              if (material.inkRefund > 0) {
+                _ink = math.min(1.0, _ink + material.inkRefund);
+              }
+              _registerLandingImpact(fallVelocity);
+              return;
+            case InkType.standard:
+            default:
+              _playerPosition = Offset(_playerPosition.dx, yOnLine - _playerRadius);
+              _velocityY = 0;
+              _onGround = true;
+              _coyoteTimer = _coyoteDuration;
+              return;
+          }
         }
       }
     }
@@ -814,7 +899,8 @@ class GameController extends ChangeNotifier {
   }
 
   void _updateObstacles(double dt) {
-    final double shift = -_scrollSpeed * dt;
+    final double speed = _effectiveScrollSpeed;
+    final double shift = -speed * dt;
     final List<Obstacle> spawned = [];
     for (final obstacle in _obstacles) {
       obstacle.translate(shift);
@@ -832,7 +918,7 @@ class GameController extends ChangeNotifier {
       (obstacle) => obstacle.rect.right < -80 || obstacle.isExpired,
     );
 
-    _worldDistance += _scrollSpeed * dt;
+    _worldDistance += speed * dt;
     _advanceChunkPlanner();
     final bool spawnedPlannedObstacle = _spawnDuePlannedObstacles();
     _spawnDuePlannedCollectibles();
@@ -850,17 +936,23 @@ class GameController extends ChangeNotifier {
         _spawnTimer = normalized;
       } else {
         _spawnRandomObstacle();
-        final double difficulty = math.min(1.25, 0.6 + _scrollSpeed / 420);
+        final double difficulty = math.min(1.25, 0.6 + speed / 420);
         final double baseGap = (0.9 + _random.nextDouble() * 0.6) / difficulty;
         _spawnTimer = baseGap + (_tutorialCompleted ? 0 : 0.4);
       }
     }
 
     _scrollSpeed = math.min(540, _scrollSpeed + dt * 6);
+    if (_speedBonus > 0) {
+      _speedBonus = math.max(0, _speedBonus - 90 * dt);
+    }
+    if (_slowPenalty > 0) {
+      _slowPenalty = math.max(0, _slowPenalty - 70 * dt);
+    }
   }
 
   void _updateCoins(double dt) {
-    final double shift = -_scrollSpeed * dt;
+    final double shift = -_effectiveScrollSpeed * dt;
     for (final coin in _coins) {
       coin.translate(shift);
     }
@@ -890,7 +982,7 @@ class GameController extends ChangeNotifier {
   }
 
   void _updateScore(double dt) {
-    _scoreAccumulator += _scrollSpeed * dt * 0.02;
+    _scoreAccumulator += _effectiveScrollSpeed * dt * 0.02;
     if (_scoreAccumulator >= 1) {
       final int delta = _scoreAccumulator.floor();
       _score += delta;
@@ -1281,6 +1373,7 @@ class GameController extends ChangeNotifier {
 
   @override
   void dispose() {
+    meta.removeListener(_handleMetaChanged);
     _ticker.dispose();
     super.dispose();
   }
