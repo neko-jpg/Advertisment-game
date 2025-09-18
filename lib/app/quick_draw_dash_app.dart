@@ -33,7 +33,7 @@ class QuickDrawDashApp extends StatelessWidget {
         Provider<AppEnvironment>.value(value: environment),
         Provider<AnalyticsService>.value(value: analytics),
         ChangeNotifierProvider<MetaProvider>(
-          create: (_) => MetaProvider(),
+          create: (_) => MetaProvider(analytics: analytics),
         ),
         ChangeNotifierProvider<PlayerWallet>(
           create: (_) {

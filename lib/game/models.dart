@@ -119,6 +119,7 @@ class Obstacle {
   final SpitterConfig? spitterConfig;
   final ProjectileConfig? projectileConfig;
   bool _expired = false;
+  bool nearMissRegistered = false;
 
   bool get isCeiling => behavior == ObstacleBehavior.ceiling;
   bool get isExpired => _expired;

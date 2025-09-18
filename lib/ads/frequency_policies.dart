@@ -106,12 +106,30 @@ class AdFrequencyController {
 
   final List<AdFrequencyPolicy> policies;
 
-  bool canShow(AdRequestContext context) {
+  AdFrequencyResult evaluate(AdRequestContext context) {
+    final List<String> blocked = <String>[];
     for (final policy in policies) {
       if (!policy.canShow(context)) {
-        return false;
+        blocked.add(_policyName(policy));
       }
     }
-    return true;
+    return AdFrequencyResult(
+      allowed: blocked.isEmpty,
+      blockedPolicies: blocked,
+    );
   }
+
+  bool canShow(AdRequestContext context) => evaluate(context).allowed;
+
+  String _policyName(AdFrequencyPolicy policy) => policy.runtimeType.toString();
+}
+
+class AdFrequencyResult {
+  const AdFrequencyResult({
+    required this.allowed,
+    required this.blockedPolicies,
+  });
+
+  final bool allowed;
+  final List<String> blockedPolicies;
 }

@@ -93,6 +93,11 @@ class GameController extends ChangeNotifier {
 
   SharedPreferences? _prefs;
   Duration? _lastTick;
+  int _nearMisses = 0;
+  double _inkProgressIntegral = 0;
+  double _inkSampleTime = 0;
+  String _activeSessionId = '';
+  final math.Random _sessionIdRandom = math.Random();
 
   GamePhase get phase => _phase;
   Size get viewport => _viewport;
@@ -200,6 +205,7 @@ class GameController extends ChangeNotifier {
     }
     unawaited(
       analytics.logGameStart(
+        sessionId: _activeSessionId,
         tutorialActive: !_tutorialCompleted,
         revivesUnlocked: _reviveAvailable ? 1 : 0,
         inkMultiplier: 1.0,
@@ -374,6 +380,16 @@ class GameController extends ChangeNotifier {
     _drawTimeMs = 0;
     _usedLineThisRun = false;
     _lastDeathCause = null;
+    _nearMisses = 0;
+    _inkProgressIntegral = 0;
+    _inkSampleTime = 0;
+    _activeSessionId = _generateSessionId();
+  }
+
+  String _generateSessionId() {
+    final int seed = DateTime.now().microsecondsSinceEpoch ^
+        _sessionIdRandom.nextInt(0x7fffffff);
+    return seed.toRadixString(36);
   }
 
   void _handleTick(Duration elapsed) {
@@ -425,6 +441,8 @@ class GameController extends ChangeNotifier {
     _updateLandingDust(dt);
 
     _updateInk(dt);
+    _inkProgressIntegral += _ink.clamp(0.0, 1.0) * dt;
+    _inkSampleTime += dt;
     _updateObstacles(dt);
     _updateCoins(dt);
     _updateScore(dt);
@@ -435,6 +453,8 @@ class GameController extends ChangeNotifier {
       _finishRun();
       return;
     }
+
+    _trackNearMisses();
 
     notifyListeners();
   }
@@ -617,6 +637,43 @@ class GameController extends ChangeNotifier {
       }
     }
     return null;
+  }
+
+  void _trackNearMisses() {
+    const double horizontalInflation = 24;
+    for (final obstacle in _obstacles) {
+      if (obstacle.nearMissRegistered) {
+        continue;
+      }
+      if (obstacle.rect.center.dx > _playerPosition.dx) {
+        continue;
+      }
+      final Rect expanded = obstacle.rect.inflate(horizontalInflation);
+      final bool overlapsExpanded = _circleRectIntersect(
+        center: _playerPosition,
+        radius: _playerRadius,
+        rect: expanded,
+      );
+      if (!overlapsExpanded) {
+        continue;
+      }
+      final bool overlapsOriginal = _circleRectIntersect(
+        center: _playerPosition,
+        radius: _playerRadius,
+        rect: obstacle.rect,
+      );
+      if (overlapsOriginal) {
+        continue;
+      }
+      final double verticalGap =
+          (_playerPosition.dy - obstacle.rect.center.dy).abs();
+      final double verticalAllowance =
+          (obstacle.rect.height / 2) + _playerRadius + 18;
+      if (verticalGap <= verticalAllowance) {
+        obstacle.nearMissRegistered = true;
+        _nearMisses++;
+      }
+    }
   }
 
   void _spawnObstacle() {
@@ -849,6 +906,10 @@ class GameController extends ChangeNotifier {
     final int rewardedCoins = wallet.registerRunCoins(_coinsCollected);
     _lastRunAwardedCoins = rewardedCoins;
 
+    final double inkEfficiency = _inkSampleTime <= 0
+        ? 0
+        : (_inkProgressIntegral / _inkSampleTime).clamp(0.0, 1.0);
+
     final runStats = RunStats(
       duration: runDuration,
       score: _score,
@@ -857,12 +918,15 @@ class GameController extends ChangeNotifier {
       jumpsPerformed: _jumpsPerformed,
       drawTimeMs: _drawTimeMs.round(),
       accidentDeath: _lastDeathCause != null,
+      nearMisses: _nearMisses,
+      inkEfficiency: inkEfficiency,
     );
     meta.applyRunStats(runStats);
     meta.unlockStoryFragmentForRun(runStats);
     final int revivesUsed = _reviveAvailable ? 0 : 1;
     unawaited(
       analytics.logGameEnd(
+        sessionId: _activeSessionId,
         stats: runStats,
         revivesUsed: revivesUsed,
         totalCoins: wallet.totalCoins,

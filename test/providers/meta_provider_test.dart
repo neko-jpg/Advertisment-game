@@ -1,11 +1,12 @@
-﻿import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:myapp/core/analytics/analytics_service.dart';
 import 'package:myapp/game_models.dart';
 import 'package:myapp/meta_provider.dart';
 
 Future<MetaProvider> _createProvider() async {
-  final provider = MetaProvider();
+  final provider = MetaProvider(analytics: AnalyticsService.fake());
   var attempts = 0;
   while (!provider.isReady && attempts < 20) {
     await Future<void>.delayed(const Duration(milliseconds: 1));

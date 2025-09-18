@@ -5,14 +5,17 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../core/analytics/analytics_service.dart';
 import '../components/player_skin.dart';
 import '../models/game_models.dart';
 import '../story/story_fragment.dart';
 
 class MetaProvider with ChangeNotifier {
-  MetaProvider() {
+  MetaProvider({AnalyticsService? analytics}) : _analytics = analytics {
     _loadFromStorage();
   }
+
+  final AnalyticsService? _analytics;
 
   static const _coinsKey = 'meta_total_coins';
   static const _ownedSkinsKey = 'meta_owned_skins';
@@ -407,8 +410,16 @@ class MetaProvider with ChangeNotifier {
           break;
       }
       if (mission.progress >= mission.target) {
+        final bool newlyCompleted = !mission.completed;
         mission.progress = mission.target;
         mission.completed = true;
+        if (newlyCompleted) {
+          _analytics?.logMissionComplete(
+            missionId: mission.id,
+            missionType: describeEnum(mission.type),
+            reward: mission.reward,
+          );
+        }
       }
     }
     _saveDailyMissions();

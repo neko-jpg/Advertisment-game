@@ -72,6 +72,7 @@ class AdService extends ChangeNotifier {
 
   int _runsSinceInterstitial = 0;
   DateTime? _lastInterstitialShownAt;
+  DateTime? _lastRewardedShownAt;
 
   int _bannerLoadAttempts = 0;
   int _interstitialLoadAttempts = 0;
@@ -350,6 +351,16 @@ class AdService extends ChangeNotifier {
     _interstitialAd = null;
     _safeNotify();
     try {
+      final DateTime now = DateTime.now();
+      final Duration elapsed = _lastInterstitialShownAt == null
+          ? const Duration(days: 365)
+          : now.difference(_lastInterstitialShownAt!);
+      _analytics?.logAdShow(
+        trigger: 'service_game_over',
+        adType: 'interstitial',
+        elapsedSinceLast: elapsed,
+      );
+      _lastInterstitialShownAt = now;
       await interstitial.show();
       unawaited(
         _analytics?.logAdWatched(
@@ -383,6 +394,16 @@ class AdService extends ChangeNotifier {
     _safeNotify();
     var rewarded = false;
     try {
+      final DateTime now = DateTime.now();
+      final Duration elapsed = _lastRewardedShownAt == null
+          ? const Duration(days: 365)
+          : now.difference(_lastRewardedShownAt!);
+      _analytics?.logAdShow(
+        trigger: 'service_rewarded',
+        adType: 'rewarded',
+        elapsedSinceLast: elapsed,
+      );
+      _lastRewardedShownAt = now;
       await ad.show(
         onUserEarnedReward: (_, reward) {
           rewarded = true;

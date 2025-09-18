@@ -52,7 +52,7 @@ const DifficultyTuningRemoteConfig _testTuning = DifficultyTuningRemoteConfig(
 );
 
 Future<MetaProvider> _createMetaProvider() async {
-  final provider = MetaProvider();
+  final provider = MetaProvider(analytics: AnalyticsService.fake());
   var attempts = 0;
   while (!provider.isReady && attempts < 20) {
     await Future<void>.delayed(const Duration(milliseconds: 1));
@@ -158,6 +158,8 @@ void main() {
           jumpsPerformed: 12,
           drawTimeMs: 5000,
           accidentDeath: false,
+          nearMisses: 0,
+          inkEfficiency: 1.0,
         ),
       );
       final provider = await _createGameProvider(runs: runs);
@@ -195,6 +197,8 @@ void main() {
           jumpsPerformed: 8,
           drawTimeMs: 3000,
           accidentDeath: true,
+          nearMisses: 0,
+          inkEfficiency: 1.0,
         ),
         RunStats(
           duration: const Duration(seconds: 45),
@@ -204,6 +208,8 @@ void main() {
           jumpsPerformed: 6,
           drawTimeMs: 2500,
           accidentDeath: true,
+          nearMisses: 0,
+          inkEfficiency: 1.0,
         ),
         RunStats(
           duration: const Duration(seconds: 55),
@@ -213,6 +219,8 @@ void main() {
           jumpsPerformed: 7,
           drawTimeMs: 2600,
           accidentDeath: true,
+          nearMisses: 0,
+          inkEfficiency: 1.0,
         ),
       ];
       final provider = await _createGameProvider(runs: runs);
