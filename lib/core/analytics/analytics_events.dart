@@ -11,6 +11,7 @@ class AnalyticsEventKeys {
   static const String coinsCollected = 'coins_collected';
   static const String obstacleHit = 'obstacle_hit';
   static const String missionComplete = 'mission_complete';
+  static const String kpiSnapshot = 'kpi_snapshot';
 }
 
 class AnalyticsParamKeys {
@@ -51,4 +52,13 @@ class AnalyticsParamKeys {
   static const String missionId = 'mission_id';
   static const String missionType = 'mission_type';
   static const String reward = 'reward';
+  static const String totalSessions = 'total_sessions';
+  static const String completedSessions = 'completed_sessions';
+  static const String averageSessionMinutes = 'avg_session_minutes';
+  static const String sessionsPerDay = 'sessions_per_day';
+  static const String sessionsToday = 'sessions_today';
+  static const String rewardedViewRate = 'rewarded_view_rate';
+  static const String retentionD1 = 'retention_d1';
+  static const String retentionD7 = 'retention_d7';
+  static const String retentionD30 = 'retention_d30';
 }

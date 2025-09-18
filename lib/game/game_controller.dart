@@ -8,6 +8,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/analytics/analytics_service.dart';
+import '../core/kpi/session_metrics_tracker.dart';
 import '../services/ad_service.dart';
 import '../services/player_wallet.dart';
 import 'audio/sound_controller.dart';
@@ -31,6 +32,7 @@ class GameController extends ChangeNotifier {
     required this.analytics,
     required this.wallet,
     required this.meta,
+    required this.sessionMetrics,
   }) {
     _ticker = vsync.createTicker(_handleTick);
     meta.addListener(_handleMetaChanged);
@@ -42,6 +44,7 @@ class GameController extends ChangeNotifier {
   final AnalyticsService analytics;
   final PlayerWallet wallet;
   final MetaProvider meta;
+  final SessionMetricsTracker sessionMetrics;
 
   late final Ticker _ticker;
   GamePhase _phase = GamePhase.loading;
@@ -111,6 +114,7 @@ class GameController extends ChangeNotifier {
   final List<_PlannedObstacle> _plannedObstacles = <_PlannedObstacle>[];
   final List<_PlannedCollectible> _plannedCollectibles = <_PlannedCollectible>[];
   double _worldDistance = 0;
+  int _missionsCompletedOnRunStart = 0;
 
   GamePhase get phase => _phase;
   Size get viewport => _viewport;
@@ -219,6 +223,14 @@ class GameController extends ChangeNotifier {
     } else {
       notifyListeners();
     }
+    sessionMetrics.recordGameStart(
+      sessionId: _activeSessionId,
+      tutorialActive: !_tutorialCompleted,
+      revivesUnlocked: _reviveAvailable ? 1 : 0,
+      inkMultiplier: 1.0,
+      missionsAvailable: meta.hasDailyMissions,
+      totalCoins: wallet.totalCoins,
+    );
     unawaited(
       analytics.logGameStart(
         sessionId: _activeSessionId,
@@ -226,7 +238,7 @@ class GameController extends ChangeNotifier {
         revivesUnlocked: _reviveAvailable ? 1 : 0,
         inkMultiplier: 1.0,
         totalCoins: wallet.totalCoins,
-        missionsAvailable: false,
+        missionsAvailable: meta.hasDailyMissions,
       ),
     );
   }
@@ -350,6 +362,10 @@ class GameController extends ChangeNotifier {
     } finally {
       _rewardInFlight = false;
       notifyListeners();
+      sessionMetrics.recordRewardedView(
+        _activeSessionId,
+        completed: rewarded,
+      );
     }
     if (!rewarded) {
       return false;
@@ -435,6 +451,8 @@ class GameController extends ChangeNotifier {
     _activeInkType = meta.selectedInkType;
     _speedBonus = 0;
     _slowPenalty = 0;
+    _missionsCompletedOnRunStart =
+        meta.dailyMissions.where((mission) => mission.completed).length;
     _initializeChunkPlanner();
   }
 
@@ -1305,6 +1323,10 @@ class GameController extends ChangeNotifier {
       inkEfficiency: inkEfficiency,
     );
     meta.applyRunStats(runStats);
+    final int completedNow =
+        meta.dailyMissions.where((mission) => mission.completed).length;
+    final int missionsDelta = math.max(0, completedNow - _missionsCompletedOnRunStart);
+    _missionsCompletedOnRunStart = completedNow;
     meta.unlockStoryFragmentForRun(runStats);
     final int revivesUsed = _reviveAvailable ? 0 : 1;
     unawaited(
@@ -1313,9 +1335,17 @@ class GameController extends ChangeNotifier {
         stats: runStats,
         revivesUsed: revivesUsed,
         totalCoins: wallet.totalCoins,
-        missionsCompletedDelta: 0,
+        missionsCompletedDelta: missionsDelta,
       ),
     );
+    final snapshot = sessionMetrics.recordGameEnd(
+      sessionId: _activeSessionId,
+      stats: runStats,
+      revivesUsed: revivesUsed,
+      missionsCompletedDelta: missionsDelta,
+      coinsGained: _coinsCollected,
+    );
+    unawaited(analytics.logKpiSnapshot(snapshot: snapshot));
     if (_lastDeathCause != null) {
       unawaited(
         analytics.logObstacleHit(

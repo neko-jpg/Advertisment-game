@@ -5,6 +5,7 @@ import '../ads/ad_manager.dart';
 import '../core/analytics/analytics_service.dart';
 import '../core/config/remote_config_service.dart';
 import '../core/env.dart';
+import '../core/kpi/session_metrics_tracker.dart';
 import '../core/logging/logger.dart';
 import 'di/injector.dart';
 import 'router/app_router.dart';
@@ -21,6 +22,9 @@ class QuickDrawDashApp extends StatelessWidget {
       providers: [
         Provider<AnalyticsService>.value(
           value: serviceLocator<AnalyticsService>(),
+        ),
+        ChangeNotifierProvider<SessionMetricsTracker>.value(
+          value: serviceLocator<SessionMetricsTracker>(),
         ),
         ChangeNotifierProvider<RemoteConfigService>.value(
           value: serviceLocator<RemoteConfigService>(),

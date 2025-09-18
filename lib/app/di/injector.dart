@@ -6,6 +6,7 @@ import '../router/app_router.dart';
 import '../../core/analytics/analytics_service.dart';
 import '../../core/config/remote_config_service.dart';
 import '../../core/env.dart';
+import '../../core/kpi/session_metrics_tracker.dart';
 import '../../core/logging/logger.dart';
 
 final GetIt serviceLocator = GetIt.instance;
@@ -29,6 +30,17 @@ Future<void> configureDependencies({
   } else {
     serviceLocator.unregister<AnalyticsService>();
     serviceLocator.registerSingleton<AnalyticsService>(analytics);
+  }
+
+  if (!serviceLocator.isRegistered<SessionMetricsTracker>()) {
+    final tracker = SessionMetricsTracker();
+    await tracker.initialize();
+    serviceLocator.registerSingleton<SessionMetricsTracker>(tracker);
+  } else {
+    final tracker = serviceLocator<SessionMetricsTracker>();
+    if (!tracker.isInitialized) {
+      await tracker.initialize();
+    }
   }
 
   if (!serviceLocator.isRegistered<RemoteConfigService>()) {

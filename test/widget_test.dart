@@ -7,6 +7,7 @@ import 'package:myapp/core/analytics/analytics_service.dart';
 import 'package:myapp/core/config/remote_config_service.dart';
 import 'package:myapp/core/env.dart';
 import 'package:myapp/core/logging/logger.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -21,6 +22,7 @@ void main() {
     serviceLocator.registerLazySingleton<AppLogger>(
       () => AppLogger(environment: environment),
     );
+    SharedPreferences.setMockInitialValues(<String, Object>{});
 
     await configureDependencies(
       analytics: AnalyticsService.fake(),
