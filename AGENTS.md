@@ -92,22 +92,6 @@ IAP：コスメ/キャラ/通貨パック、インタースティシャル削除
 
 QuickDrawDash 改善リサーチ計画
 
-7. 技術要件（実装指針）
-
-タイムステップ：物理は固定、dt クランプ導入。
-
-プール：パーティクル/チャンク/プラットフォーム再利用。
-
-入力：タップ/ドラッグ閾値、マルチタッチ干渉回避。
-
-計測：イベント命名規約・バージョン付与・サンプリング。
-
-AB基盤：Remote Config キー（dda.density, rewarded.revives.enabled 等）を一覧管理。
-
-端末性能適応：Battery Optimizerでエフェクト密度を自動調整。
-
-テスト：PCGチャンクの接続プロパティ単体テスト、DDA境界条件のゴールデンテスト。
-
 8. 計測仕様（抜粋）
 
 game_start: session_id, revives_unlocked, ink_multiplier, missions_available
