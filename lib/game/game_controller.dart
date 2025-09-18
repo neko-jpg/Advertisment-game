@@ -11,6 +11,10 @@ import '../core/analytics/analytics_service.dart';
 import '../services/ad_service.dart';
 import '../services/player_wallet.dart';
 import 'audio/sound_controller.dart';
+import 'content/models/content_models.dart';
+import 'content/pcg/chunk_library.dart';
+import 'content/pcg/chunk_models.dart';
+import 'content/pcg/chunk_spawner.dart';
 import 'models.dart';
 import 'models/game_models.dart' show RunStats;
 import 'state/meta_state.dart';
@@ -98,6 +102,11 @@ class GameController extends ChangeNotifier {
   double _inkSampleTime = 0;
   String _activeSessionId = '';
   final math.Random _sessionIdRandom = math.Random();
+  ChunkSpawner? _chunkSpawner;
+  final Set<String> _scheduledChunkKeys = <String>{};
+  final List<_PlannedObstacle> _plannedObstacles = <_PlannedObstacle>[];
+  final List<_PlannedCollectible> _plannedCollectibles = <_PlannedCollectible>[];
+  double _worldDistance = 0;
 
   GamePhase get phase => _phase;
   Size get viewport => _viewport;
@@ -384,12 +393,259 @@ class GameController extends ChangeNotifier {
     _inkProgressIntegral = 0;
     _inkSampleTime = 0;
     _activeSessionId = _generateSessionId();
+    _initializeChunkPlanner();
   }
 
   String _generateSessionId() {
     final int seed = DateTime.now().microsecondsSinceEpoch ^
         _sessionIdRandom.nextInt(0x7fffffff);
     return seed.toRadixString(36);
+  }
+
+  void _initializeChunkPlanner() {
+    _worldDistance = 0;
+    _plannedObstacles.clear();
+    _plannedCollectibles.clear();
+    _scheduledChunkKeys.clear();
+
+    final ChunkSpawner spawner = ChunkSpawner(
+      prefabs: ChunkPrefabLibrary.prefabs,
+      initialTheme: VisualTheme.classic,
+      queueLength: 4,
+      random: _random,
+    );
+    spawner.updateDifficulty(_effectiveDifficultyLevel());
+    spawner.initialize(startingChunk: ChunkPrefabLibrary.starter, startX: 0);
+    _chunkSpawner = spawner;
+    _scheduleChunks();
+  }
+
+  double _effectiveDifficultyLevel() {
+    final double base = (_score / 1200).clamp(0.0, 1.0).toDouble();
+    final double tutorialModifier = _tutorialCompleted ? 0.0 : -0.25;
+    return (base + tutorialModifier).clamp(0.0, 1.0).toDouble();
+  }
+
+  void _scheduleChunks() {
+    final ChunkSpawner? spawner = _chunkSpawner;
+    if (spawner == null) {
+      return;
+    }
+    for (final chunk in spawner.activeChunks) {
+      final String key = '${chunk.prefab.id}@${chunk.startX.toStringAsFixed(1)}';
+      if (_scheduledChunkKeys.contains(key)) {
+        continue;
+      }
+      _scheduledChunkKeys.add(key);
+      _enqueueChunkElements(chunk);
+    }
+  }
+
+  void _enqueueChunkElements(ChunkInstance chunk) {
+    final double spawnLead = _spawnLeadDistance;
+    final double chunkStart = chunk.startX;
+    for (final element in chunk.prefab.elements) {
+      if (element is ObstacleElement) {
+        final double trigger = math.max(
+          0,
+          chunkStart + element.positionX - spawnLead,
+        );
+        _addPlannedObstacle(
+          _PlannedObstacle(
+            spawnDistance: trigger,
+            obstacleType: element.obstacleType,
+            height: element.height,
+          ),
+        );
+      } else if (element is CollectibleElement) {
+        final double trigger = math.max(
+          0,
+          chunkStart + element.positionX - (spawnLead * 0.85),
+        );
+        _addPlannedCollectible(
+          _PlannedCollectible(
+            spawnDistance: trigger,
+            rewardType: element.rewardType,
+            height: element.height,
+          ),
+        );
+      }
+    }
+  }
+
+  void _addPlannedObstacle(_PlannedObstacle obstacle) {
+    final int index = _plannedObstacles.indexWhere(
+      (existing) => existing.spawnDistance > obstacle.spawnDistance,
+    );
+    if (index == -1) {
+      _plannedObstacles.add(obstacle);
+    } else {
+      _plannedObstacles.insert(index, obstacle);
+    }
+  }
+
+  void _addPlannedCollectible(_PlannedCollectible collectible) {
+    final int index = _plannedCollectibles.indexWhere(
+      (existing) => existing.spawnDistance > collectible.spawnDistance,
+    );
+    if (index == -1) {
+      _plannedCollectibles.add(collectible);
+    } else {
+      _plannedCollectibles.insert(index, collectible);
+    }
+  }
+
+  double get _spawnLeadDistance {
+    if (_viewport == Size.zero) {
+      return 420;
+    }
+    return math.max(360, _viewport.width + 160);
+  }
+
+  void _advanceChunkPlanner() {
+    final ChunkSpawner? spawner = _chunkSpawner;
+    if (spawner == null) {
+      return;
+    }
+    spawner.updateDifficulty(_effectiveDifficultyLevel());
+    spawner.advance(_worldDistance);
+    _scheduleChunks();
+  }
+
+  bool _spawnDuePlannedObstacles() {
+    var spawned = false;
+    while (_plannedObstacles.isNotEmpty &&
+        _plannedObstacles.first.spawnDistance <= _worldDistance) {
+      final _PlannedObstacle plan = _plannedObstacles.removeAt(0);
+      spawned = _spawnPlannedObstacle(plan) || spawned;
+    }
+    return spawned;
+  }
+
+  void _spawnDuePlannedCollectibles() {
+    while (_plannedCollectibles.isNotEmpty &&
+        _plannedCollectibles.first.spawnDistance <= _worldDistance) {
+      final _PlannedCollectible plan = _plannedCollectibles.removeAt(0);
+      _spawnPlannedCollectible(plan);
+    }
+  }
+
+  double? _nextPlannedObstacleTime() {
+    if (_plannedObstacles.isEmpty) {
+      return null;
+    }
+    final double distance =
+        _plannedObstacles.first.spawnDistance - _worldDistance;
+    if (distance <= 0) {
+      return 0;
+    }
+    final double speed = math.max(_scrollSpeed, 120);
+    return distance / speed;
+  }
+
+  bool _spawnPlannedObstacle(_PlannedObstacle plan) {
+    if (_phase != GamePhase.running) {
+      return false;
+    }
+    Obstacle? obstacle;
+    switch (plan.obstacleType) {
+      case 'ground_gentle':
+        obstacle = _buildGroundBlock(
+          gentle: true,
+          heightOverride: plan.height,
+        );
+        break;
+      case 'ground':
+        obstacle = _buildGroundBlock(heightOverride: plan.height);
+        break;
+      case 'hopper':
+        obstacle = _buildHopper(
+          gentle: (_score < 360),
+          heightOverride: plan.height,
+        );
+        break;
+      case 'floater':
+        obstacle = _buildFloater(heightOverride: plan.height);
+        break;
+      case 'moving':
+        obstacle = _buildMovingHazard(heightOverride: plan.height);
+        break;
+      case 'spitter':
+        obstacle = _buildSpitter(heightOverride: plan.height);
+        break;
+      case 'ceiling':
+        obstacle = _buildCeilingBarrier(heightOverride: plan.height);
+        break;
+      default:
+        return false;
+    }
+    _obstacles.add(obstacle);
+    return true;
+  }
+
+  void _spawnPlannedCollectible(_PlannedCollectible plan) {
+    if (_phase != GamePhase.running) {
+      return;
+    }
+    final double baseX = _viewport.width + 96;
+    final double baseY = _resolveVerticalPosition(plan.height ?? 90);
+    switch (plan.rewardType) {
+      case 'coin_column':
+        _spawnCoinColumn(baseX, baseY);
+        break;
+      case 'coin_arc':
+        _spawnCoinArc(baseX, baseY);
+        break;
+      case 'coin_stair_down':
+        _spawnCoinStairs(baseX, baseY, descending: true);
+        break;
+      case 'coin_single':
+      default:
+        _coins.add(Coin(position: Offset(baseX, baseY)));
+        break;
+    }
+  }
+
+  double _resolveVerticalPosition(double desiredHeight) {
+    final double maxHeight = (_groundY + _playerRadius) - 36;
+    final double minHeight = 48;
+    final double y = (_groundY + _playerRadius) - desiredHeight;
+    return y.clamp(minHeight, maxHeight);
+  }
+
+  void _spawnCoinColumn(double startX, double baseY) {
+    const int count = 4;
+    const double spacing = 28;
+    for (var i = 0; i < count; i++) {
+      final double y = (baseY - spacing * i).clamp(40, _groundY + _playerRadius - 30);
+      _coins.add(Coin(position: Offset(startX + 6 * i, y)));
+    }
+  }
+
+  void _spawnCoinArc(double startX, double centerY) {
+    const int count = 5;
+    const double spacingX = 30;
+    const double amplitude = 42;
+    for (var i = 0; i < count; i++) {
+      final double t = (i / (count - 1)) * math.pi;
+      final double x = startX + spacingX * i;
+      final double y = centerY - math.sin(t) * amplitude;
+      final double clampedY = y.clamp(40, _groundY + _playerRadius - 36);
+      _coins.add(Coin(position: Offset(x, clampedY)));
+    }
+  }
+
+  void _spawnCoinStairs(double startX, double baseY, {bool descending = false}) {
+    const int count = 5;
+    const double spacingX = 32;
+    const double stepY = 20;
+    for (var i = 0; i < count; i++) {
+      final double direction = descending ? 1 : -1;
+      final double x = startX + spacingX * i;
+      final double y = (baseY + direction * stepY * i)
+          .clamp(40, _groundY + _playerRadius - 36);
+      _coins.add(Coin(position: Offset(x, y)));
+    }
   }
 
   void _handleTick(Duration elapsed) {
@@ -576,12 +832,28 @@ class GameController extends ChangeNotifier {
       (obstacle) => obstacle.rect.right < -80 || obstacle.isExpired,
     );
 
+    _worldDistance += _scrollSpeed * dt;
+    _advanceChunkPlanner();
+    final bool spawnedPlannedObstacle = _spawnDuePlannedObstacles();
+    _spawnDuePlannedCollectibles();
+
+    if (spawnedPlannedObstacle) {
+      _spawnTimer = math.max(_spawnTimer, 0.45);
+    }
     _spawnTimer -= dt;
     if (_spawnTimer <= 0) {
-      _spawnObstacle();
-      final double difficulty = math.min(1.25, 0.6 + _scrollSpeed / 420);
-      final double baseGap = (0.9 + _random.nextDouble() * 0.6) / difficulty;
-      _spawnTimer = baseGap + (_tutorialCompleted ? 0 : 0.4);
+      final double? nextPlanned = _nextPlannedObstacleTime();
+      if (nextPlanned != null && nextPlanned < 1.0) {
+        final double normalized = nextPlanned < 0.25
+            ? 0.25
+            : (nextPlanned > 1.2 ? 1.2 : nextPlanned);
+        _spawnTimer = normalized;
+      } else {
+        _spawnRandomObstacle();
+        final double difficulty = math.min(1.25, 0.6 + _scrollSpeed / 420);
+        final double baseGap = (0.9 + _random.nextDouble() * 0.6) / difficulty;
+        _spawnTimer = baseGap + (_tutorialCompleted ? 0 : 0.4);
+      }
     }
 
     _scrollSpeed = math.min(540, _scrollSpeed + dt * 6);
@@ -676,7 +948,7 @@ class GameController extends ChangeNotifier {
     }
   }
 
-  void _spawnObstacle() {
+  void _spawnRandomObstacle() {
     if (_viewport == Size.zero) {
       return;
     }
@@ -749,11 +1021,14 @@ class GameController extends ChangeNotifier {
     }
   }
 
-  Obstacle _buildGroundBlock({bool gentle = false}) {
+  Obstacle _buildGroundBlock({bool gentle = false, double? heightOverride}) {
     final double width =
         (gentle ? 60 : 48) + _random.nextDouble() * (gentle ? 40 : 96);
-    final double height =
+    double height =
         (gentle ? 54 : 70) + _random.nextDouble() * (gentle ? 30 : 64);
+    if (heightOverride != null) {
+      height = heightOverride.clamp(48, 150);
+    }
     final double left = _viewport.width + width + 48;
     final double top = (_groundY + _playerRadius) - height;
     return Obstacle(
@@ -762,11 +1037,14 @@ class GameController extends ChangeNotifier {
     );
   }
 
-  Obstacle _buildHopper({bool gentle = false}) {
+  Obstacle _buildHopper({bool gentle = false, double? heightOverride}) {
     final double width =
         (gentle ? 46 : 40) + _random.nextDouble() * (gentle ? 14 : 26);
-    final double height =
+    double height =
         (gentle ? 58 : 66) + _random.nextDouble() * (gentle ? 18 : 28);
+    if (heightOverride != null) {
+      height = heightOverride.clamp(54, 148);
+    }
     final double left = _viewport.width + width + 70;
     final double restTop = (_groundY + _playerRadius) - height;
     final double hopInterval =
@@ -784,13 +1062,16 @@ class GameController extends ChangeNotifier {
     );
   }
 
-  Obstacle _buildMovingHazard() {
+  Obstacle _buildMovingHazard({double? heightOverride}) {
     final double size = 42 + _random.nextDouble() * 22;
     final double left = _viewport.width + size + 64;
-    final double baseTop = math.max(
+    double baseTop = math.max(
       90,
       _groundY - (120 + _random.nextDouble() * 70),
     );
+    if (heightOverride != null) {
+      baseTop = _resolveVerticalPosition(heightOverride).clamp(60, _groundY - 40);
+    }
     final double amplitude = 40 + _random.nextDouble() * 55;
     final double frequency = 0.6 + _random.nextDouble() * 0.5;
     return Obstacle(
@@ -803,14 +1084,17 @@ class GameController extends ChangeNotifier {
     );
   }
 
-  Obstacle _buildFloater({bool gentle = false}) {
+  Obstacle _buildFloater({bool gentle = false, double? heightOverride}) {
     final double width = 34 + _random.nextDouble() * 28;
     final double height = 52 + _random.nextDouble() * 24;
     final double left = _viewport.width + width + 92;
-    final double baseTop = math.max(
+    double baseTop = math.max(
       80,
       _groundY - ((gentle ? 130 : 160) + _random.nextDouble() * (gentle ? 70 : 110)),
     );
+    if (heightOverride != null) {
+      baseTop = _resolveVerticalPosition(heightOverride).clamp(60, _groundY - 60);
+    }
     final double amplitude =
         (gentle ? 24 : 32) + _random.nextDouble() * (gentle ? 24 : 40);
     final double frequency = (gentle ? 0.6 : 0.85) + _random.nextDouble() * 0.55;
@@ -824,9 +1108,12 @@ class GameController extends ChangeNotifier {
     );
   }
 
-  Obstacle _buildSpitter() {
+  Obstacle _buildSpitter({double? heightOverride}) {
     final double width = 52 + _random.nextDouble() * 24;
-    final double height = 58 + _random.nextDouble() * 24;
+    double height = 58 + _random.nextDouble() * 24;
+    if (heightOverride != null) {
+      height = heightOverride.clamp(56, 132);
+    }
     final double left = _viewport.width + width + 86;
     final double top = (_groundY + _playerRadius) - height;
     final double fireInterval = 1.6 + _random.nextDouble() * 0.9;
@@ -847,14 +1134,18 @@ class GameController extends ChangeNotifier {
     );
   }
 
-  Obstacle _buildCeilingBarrier() {
+  Obstacle _buildCeilingBarrier({double? heightOverride}) {
     final double width = 90 + _random.nextDouble() * 120;
     final double height = 28 + _random.nextDouble() * 18;
     final double left = _viewport.width + width + 80;
-    final double top = math.max(
+    double top = math.max(
       40,
       (_groundY - (_playerRadius * 4)) - _random.nextDouble() * 110,
     );
+    if (heightOverride != null) {
+      top = _resolveVerticalPosition(heightOverride)
+          .clamp(30, _groundY - (_playerRadius * 3));
+    }
     return Obstacle(
       rect: Rect.fromLTWH(left, top, width, height),
       behavior: ObstacleBehavior.ceiling,
@@ -993,5 +1284,29 @@ class GameController extends ChangeNotifier {
     _ticker.dispose();
     super.dispose();
   }
+}
+
+class _PlannedObstacle {
+  const _PlannedObstacle({
+    required this.spawnDistance,
+    required this.obstacleType,
+    this.height,
+  });
+
+  final double spawnDistance;
+  final String obstacleType;
+  final double? height;
+}
+
+class _PlannedCollectible {
+  const _PlannedCollectible({
+    required this.spawnDistance,
+    required this.rewardType,
+    this.height,
+  });
+
+  final double spawnDistance;
+  final String rewardType;
+  final double? height;
 }
 
