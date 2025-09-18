@@ -147,6 +147,7 @@ class _GameViewport extends StatelessWidget {
                             lines: controller.lines,
                             obstacles: controller.obstacles,
                             coins: controller.coins,
+                            landingDust: controller.landingDust,
                             inkLevel: controller.inkLevel,
                             groundY: controller.groundY,
                             elapsed:
