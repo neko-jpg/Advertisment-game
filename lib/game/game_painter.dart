@@ -31,12 +31,12 @@ class GamePainter extends CustomPainter {
   static final Paint _obstaclePaint = Paint()..color = const Color(0xFFef4444);
   static final Paint _obstacleShadowPaint =
       Paint()
-        ..color = Colors.black.withValues(alpha: 0.4)
+        ..color = Colors.black.withOpacity(0.4)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
   static final Paint _coinPaint = Paint()..color = const Color(0xFFFACC15);
   static final Paint _coinHaloPaint =
       Paint()
-        ..color = const Color(0xFFFDE68A).withValues(alpha: 0.6)
+        ..color = const Color(0xFFFDE68A).withOpacity(0.6)
         ..style = PaintingStyle.stroke
         ..strokeWidth = 3;
   static final Paint _linePaint =
@@ -54,12 +54,12 @@ class GamePainter extends CustomPainter {
         ..strokeCap = StrokeCap.round
         ..strokeJoin = StrokeJoin.round
         ..strokeWidth = 14
-        ..color = const Color(0xFF38BDF8).withValues(alpha: 0.25)
+        ..color = const Color(0xFF38BDF8).withOpacity(0.25)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10);
   static final Paint _playerPaint = Paint()..color = const Color(0xFF22D3EE);
   static final Paint _playerGlowPaint =
       Paint()
-        ..color = const Color(0xFF22D3EE).withValues(alpha: 0.45)
+        ..color = const Color(0xFF22D3EE).withOpacity(0.45)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12);
   static final LinearGradient _movingObstacleGradient = const LinearGradient(
     colors: [Color(0xFFF97316), Color(0xFFEF4444)],
@@ -72,7 +72,7 @@ class GamePainter extends CustomPainter {
     end: Alignment.bottomCenter,
   );
   static final Paint _ceilingPaint =
-      Paint()..color = const Color(0xFF1E40AF).withValues(alpha: 0.85);
+      Paint()..color = const Color(0xFF1E40AF).withOpacity(0.85);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -97,7 +97,7 @@ class GamePainter extends CustomPainter {
     // simple starfield
     final Paint starPaint =
         Paint()
-          ..color = Colors.white.withValues(alpha: 0.12)
+          ..color = Colors.white.withOpacity(0.12)
           ..strokeCap = StrokeCap.round
           ..strokeWidth = 2;
     final int starCount = (size.width / 28).round();
@@ -151,7 +151,7 @@ class GamePainter extends CustomPainter {
       if (obstacle.behavior == ObstacleBehavior.hoveringShard) {
         final Paint aura =
             Paint()
-              ..color = const Color(0xFF38BDF8).withValues(alpha: 0.22)
+              ..color = const Color(0xFF38BDF8).withOpacity(0.22)
               ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 18);
         canvas.drawRRect(rrect.inflate(6), aura);
       }
@@ -195,7 +195,7 @@ class GamePainter extends CustomPainter {
     final double gaugeRadius = playerRadius + 14;
     final Paint gaugeBackground =
         Paint()
-          ..color = Colors.white.withValues(alpha: 0.12)
+          ..color = Colors.white.withOpacity(0.12)
           ..style = PaintingStyle.stroke
           ..strokeWidth = 4;
     canvas.drawCircle(playerPosition, gaugeRadius, gaugeBackground);
@@ -222,12 +222,12 @@ class GamePainter extends CustomPainter {
     canvas.drawCircle(
       playerPosition + eyeOffset,
       playerRadius * 0.18,
-      Paint()..color = Colors.white.withValues(alpha: 0.8),
+      Paint()..color = Colors.white.withOpacity(0.8),
     );
     canvas.drawCircle(
       playerPosition + eyeOffset + const Offset(2, 0),
       playerRadius * 0.08,
-      Paint()..color = Colors.black.withValues(alpha: 0.8),
+      Paint()..color = Colors.black.withOpacity(0.8),
     );
   }
 

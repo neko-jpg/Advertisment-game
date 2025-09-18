@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/analytics/analytics_service.dart';
 import '../services/ad_service.dart';
+import '../services/player_wallet.dart';
 import 'audio/sound_controller.dart';
 import 'models.dart';
 import 'models/game_models.dart' show RunStats;
@@ -23,6 +24,7 @@ class GameController extends ChangeNotifier {
     required this.soundController,
     required this.adService,
     required this.analytics,
+    required this.wallet,
   }) {
     _ticker = vsync.createTicker(_handleTick);
   }
@@ -31,6 +33,7 @@ class GameController extends ChangeNotifier {
   final SoundController soundController;
   final AdService adService;
   final AnalyticsService analytics;
+  final PlayerWallet wallet;
 
   late final Ticker _ticker;
   GamePhase _phase = GamePhase.loading;
@@ -69,8 +72,8 @@ class GameController extends ChangeNotifier {
   double _scoreAccumulator = 0;
   int _score = 0;
   int _coinsCollected = 0;
+  int _lastRunAwardedCoins = 0;
   int _bestScore = 0;
-  int _totalCoins = 0;
   DateTime? _runStartedAt;
   Duration _lastRunDuration = Duration.zero;
   bool _pausedForLifecycle = false;
@@ -96,7 +99,8 @@ class GameController extends ChangeNotifier {
   int get score => _score;
   int get bestScore => _bestScore;
   int get coinsCollected => _coinsCollected;
-  int get totalCoins => _totalCoins;
+  int get lastRunAwardedCoins => _lastRunAwardedCoins;
+  int get totalCoins => wallet.totalCoins;
   Duration get lastRunDuration => _lastRunDuration;
   bool get reviveAvailable => _reviveAvailable;
   bool get rewardInFlight => _rewardInFlight;
@@ -113,10 +117,11 @@ class GameController extends ChangeNotifier {
     _phase = GamePhase.loading;
     notifyListeners();
 
+    await wallet.ensureReady();
+
     try {
       _prefs = await SharedPreferences.getInstance();
       _bestScore = _prefs?.getInt('qdd_best_score') ?? 0;
-      _totalCoins = _prefs?.getInt('qdd_total_coins') ?? 0;
       final tutorialDone = _prefs?.getBool('qdd_tutorial_complete') ?? false;
       if (tutorialDone) {
         _tutorialStage = TutorialStage.complete;
@@ -129,7 +134,6 @@ class GameController extends ChangeNotifier {
       debugPrint('QuickDrawDash: failed to load preferences - $error');
       debugPrintStack(stackTrace: stackTrace);
       _bestScore = 0;
-      _totalCoins = 0;
     }
 
     _phase = GamePhase.ready;
@@ -193,7 +197,7 @@ class GameController extends ChangeNotifier {
         tutorialActive: !_tutorialCompleted,
         revivesUnlocked: _reviveAvailable ? 1 : 0,
         inkMultiplier: 1.0,
-        totalCoins: _totalCoins,
+        totalCoins: wallet.totalCoins,
         missionsAvailable: false,
       ),
     );
@@ -348,6 +352,7 @@ class GameController extends ChangeNotifier {
     _score = 0;
     _scoreAccumulator = 0;
     _coinsCollected = 0;
+    _lastRunAwardedCoins = 0;
     _reviveAvailable = true;
     _playerPosition = Offset(_viewport.width * 0.22, _groundY);
     _velocityY = 0;
@@ -525,7 +530,7 @@ class GameController extends ChangeNotifier {
         unawaited(
           analytics.logCoinsCollected(
             amount: 1,
-            totalCoins: _totalCoins + _coinsCollected,
+            totalCoins: wallet.totalCoins,
             source: 'run',
           ),
         );
@@ -719,8 +724,9 @@ class GameController extends ChangeNotifier {
       _bestScore = _score;
       _prefs?.setInt('qdd_best_score', _bestScore);
     }
-    _totalCoins += _coinsCollected;
-    _prefs?.setInt('qdd_total_coins', _totalCoins);
+
+    final int rewardedCoins = wallet.registerRunCoins(_coinsCollected);
+    _lastRunAwardedCoins = rewardedCoins;
 
     final runStats = RunStats(
       duration: runDuration,
@@ -736,7 +742,7 @@ class GameController extends ChangeNotifier {
       analytics.logGameEnd(
         stats: runStats,
         revivesUsed: revivesUsed,
-        totalCoins: _totalCoins,
+        totalCoins: wallet.totalCoins,
         missionsCompletedDelta: 0,
       ),
     );
@@ -801,3 +807,4 @@ class GameController extends ChangeNotifier {
     super.dispose();
   }
 }
+

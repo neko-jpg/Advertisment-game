@@ -8,6 +8,9 @@ import '../../../game/game_controller.dart';
 import '../../../game/game_painter.dart';
 import '../../../game/audio/sound_controller.dart';
 import '../../../services/ad_service.dart';
+import '../../../services/player_wallet.dart';
+import '../../store/storefront_sheet.dart';
+import '../../../monetization/storefront_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -21,6 +24,7 @@ class _HomeScreenState extends State<HomeScreen>
   late GameController _controller;
   late SoundController _soundController;
   late AdService _adService;
+  late PlayerWallet _wallet;
   late AnalyticsService _analytics;
 
   @override
@@ -29,12 +33,14 @@ class _HomeScreenState extends State<HomeScreen>
     WidgetsBinding.instance.addObserver(this);
     _soundController = context.read<SoundController>();
     _adService = context.read<AdService>();
+    _wallet = context.read<PlayerWallet>();
     _analytics = context.read<AnalyticsService>();
     _controller = GameController(
       vsync: this,
       soundController: _soundController,
       adService: _adService,
       analytics: _analytics,
+      wallet: _wallet,
     )..initialize();
     if (!_adService.isInitialized) {
       unawaited(_adService.initialize());
@@ -77,9 +83,11 @@ class _HomeScreenState extends State<HomeScreen>
         backgroundColor: Colors.black,
         body: SafeArea(
           child: Column(
-            children: [
-              const Expanded(child: _GameViewport()),
-              const _BannerContainer(),
+            children: const [
+              _MonetizationBar(),
+              SizedBox(height: 8),
+              Expanded(child: _GameViewport()),
+              _BannerContainer(),
             ],
           ),
         ),
@@ -263,9 +271,9 @@ class _HudChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.08),
+        color: Colors.white.withOpacity(0.08),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+        border: Border.all(color: Colors.white.withOpacity(0.12)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -419,7 +427,7 @@ class _ReadyOverlay extends StatelessWidget {
 
     return Positioned.fill(
       child: Container(
-        color: Colors.black.withValues(alpha: 0.7),
+        color: Colors.black.withOpacity(0.7),
         alignment: Alignment.center,
         padding: const EdgeInsets.symmetric(horizontal: 32),
         child: ConstrainedBox(
@@ -470,7 +478,7 @@ class _ReadyOverlay extends StatelessWidget {
                       value: progressValue.clamp(0.0, 1.0),
                       minHeight: 8,
                       color: const Color(0xFF38BDF8),
-                      backgroundColor: Colors.white.withValues(alpha: 0.12),
+                      backgroundColor: Colors.white.withOpacity(0.12),
                     ),
                   ),
                 ),
@@ -575,12 +583,12 @@ class _TutorialCoach extends StatelessWidget {
           key: ValueKey<TutorialStage>(stage),
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
           decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.72),
+            color: Colors.black.withOpacity(0.72),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+            border: Border.all(color: Colors.white.withOpacity(0.18)),
             boxShadow: [
               BoxShadow(
-                color: Colors.blueAccent.withValues(alpha: 0.16),
+                color: Colors.blueAccent.withOpacity(0.16),
                 blurRadius: 14,
                 spreadRadius: 2,
               ),
@@ -621,6 +629,151 @@ class _TutorialCoach extends StatelessWidget {
   }
 }
 
+class _MonetizationBar extends StatelessWidget {
+  const _MonetizationBar();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final wallet = context.watch<PlayerWallet>();
+    final controller = context.watch<GameController>();
+    final store = context.watch<StorefrontService>();
+    final bool multiplierActive = wallet.coinMultiplier > 1.0;
+    final Duration? remaining = wallet.coinMultiplierRemaining;
+    final bool adsRemoved = wallet.adsRemoved;
+    final bool storeBusy = store.loading || store.initializing;
+    final int lastReward = controller.lastRunAwardedCoins;
+    final bool showLastReward =
+        controller.phase == GamePhase.gameOver && lastReward > 0;
+
+    final String boostLabel =
+        multiplierActive
+            ? 'Boost x${wallet.coinMultiplier.toStringAsFixed(1)}' +
+                (remaining != null ? ' - ${_formatRemaining(remaining)}' : '')
+            : 'Multiplier x1.0';
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.04),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: Colors.white.withOpacity(0.08)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Coins',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: Colors.white70,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${wallet.totalCoins}',
+                      style: theme.textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Icon(
+                          multiplierActive ? Icons.bolt : Icons.bolt_outlined,
+                          size: 16,
+                          color:
+                              multiplierActive
+                                  ? Colors.amberAccent
+                                  : Colors.white54,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            boostLabel,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color:
+                                  multiplierActive
+                                      ? Colors.amberAccent
+                                      : Colors.white70,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (adsRemoved)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.verified,
+                              size: 16,
+                              color: Colors.lightBlueAccent,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Ads disabled',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: Colors.lightBlueAccent,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    if (showLastReward)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Text(
+                          '+$lastReward coins last run',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: Colors.greenAccent,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              FilledButton.icon(
+                onPressed:
+                    storeBusy ? null : () => showStorefrontSheet(context),
+                icon:
+                    storeBusy
+                        ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                        : const Icon(Icons.storefront_outlined),
+                label: Text(storeBusy ? 'Loading' : 'Shop'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _formatRemaining(Duration duration) {
+    if (duration.inDays >= 1) {
+      return '${duration.inDays}d';
+    }
+    if (duration.inHours >= 1) {
+      return '${duration.inHours}h';
+    }
+    if (duration.inMinutes >= 1) {
+      return '${duration.inMinutes}m';
+    }
+    return '${duration.inSeconds}s';
+  }
+}
+
 class _GameOverOverlay extends StatefulWidget {
   const _GameOverOverlay();
 
@@ -635,12 +788,23 @@ class _GameOverOverlayState extends State<_GameOverOverlay> {
   Widget build(BuildContext context) {
     final controller = context.watch<GameController>();
     final adService = context.watch<AdService>();
+    final wallet = context.watch<PlayerWallet>();
     final theme = Theme.of(context);
     final canRevive = controller.canRevive && !_reviving;
 
+    final int baseCoins = controller.coinsCollected;
+    final int mintedCoins =
+        controller.lastRunAwardedCoins > 0
+            ? controller.lastRunAwardedCoins
+            : baseCoins;
+    final bool boosted = mintedCoins > baseCoins && baseCoins > 0;
+    final String coinSummary =
+        '+$mintedCoins' +
+        (boosted ? ' (x${wallet.coinMultiplier.toStringAsFixed(1)})' : '');
+
     return Positioned.fill(
       child: Container(
-        color: Colors.black.withValues(alpha: 0.78),
+        color: Colors.black.withOpacity(0.78),
         padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 40),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -659,7 +823,7 @@ class _GameOverOverlayState extends State<_GameOverOverlay> {
               value: _formatDuration(controller.lastRunDuration),
             ),
             _SummaryRow(label: 'Best', value: controller.bestScore.toString()),
-            _SummaryRow(label: 'Coins', value: '+${controller.coinsCollected}'),
+            _SummaryRow(label: 'Coins', value: coinSummary),
             if (adService.sessionRuns > 0)
               Padding(
                 padding: const EdgeInsets.only(top: 8),

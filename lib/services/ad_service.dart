@@ -6,6 +6,7 @@ import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 import '../core/analytics/analytics_service.dart';
 import '../core/env.dart';
+import 'player_wallet.dart';
 
 class AdService extends ChangeNotifier {
   AdService({
@@ -20,6 +21,7 @@ class AdService extends ChangeNotifier {
     int minimumScoreForInterstitial = 120,
     Duration sessionGracePeriod = const Duration(seconds: 45),
     AnalyticsService? analytics,
+    PlayerWallet? wallet,
   }) : _environment = environment ?? AppEnvironment.resolve(),
        _keywords =
            keywords ??
@@ -33,7 +35,11 @@ class AdService extends ChangeNotifier {
        _minimumScoreForInterstitial = minimumScoreForInterstitial,
        _sessionGracePeriod = sessionGracePeriod,
        _sessionStartedAt = DateTime.now(),
-       _analytics = analytics;
+       _analytics = analytics,
+       _wallet = wallet {
+    _adsAllowedCache = _adsAllowed;
+    _bindWallet(wallet);
+  }
 
   final AppEnvironment _environment;
   final List<String> _keywords;
@@ -46,6 +52,7 @@ class AdService extends ChangeNotifier {
   final int _minimumScoreForInterstitial;
   final Duration _sessionGracePeriod;
   final AnalyticsService? _analytics;
+  PlayerWallet? _wallet;
   final DateTime _sessionStartedAt;
 
   BannerAd? _bannerAd;
@@ -55,6 +62,9 @@ class AdService extends ChangeNotifier {
   Timer? _bannerRetryTimer;
   Timer? _interstitialRetryTimer;
   Timer? _rewardedRetryTimer;
+
+  VoidCallback? _walletListener;
+  bool _adsAllowedCache = true;
 
   Completer<void>? _initializationCompleter;
   bool _initializing = false;
@@ -72,7 +82,7 @@ class AdService extends ChangeNotifier {
   double _rollingRunDurationSeconds = 0;
   int _highValueRunStreak = 0;
 
-  BannerAd? get bannerAd => _bannerAd;
+  BannerAd? get bannerAd => _adsAllowed ? _bannerAd : null;
   bool get hasRewardedAd => _rewardedAd != null;
   bool get isInitialized => !_initializing && _initializationCompleter == null;
 
@@ -88,8 +98,18 @@ class AdService extends ChangeNotifier {
                     .round(),
           );
 
+  bool get adsDisabled => !_adsAllowed;
+  bool get _adsAllowed =>
+      _environment.adsEnabled && !(_wallet?.adsRemoved ?? false);
+
+  bool get _canLoadAds => _adsAllowed && !_isDisposed;
+
   Future<void> initialize() async {
     if (_isDisposed) {
+      return;
+    }
+    if (!_adsAllowed) {
+      _teardownAds();
       return;
     }
     final pending = _initializationCompleter;
@@ -119,6 +139,9 @@ class AdService extends ChangeNotifier {
 
   Future<void> _loadBanner() async {
     if (_isDisposed) {
+      return;
+    }
+    if (!_canLoadAds) {
       return;
     }
     _bannerRetryTimer?.cancel();
@@ -158,6 +181,9 @@ class AdService extends ChangeNotifier {
 
   Future<void> _loadInterstitial() async {
     if (_isDisposed) {
+      return;
+    }
+    if (!_canLoadAds) {
       return;
     }
     _interstitialRetryTimer?.cancel();
@@ -209,6 +235,9 @@ class AdService extends ChangeNotifier {
     if (_isDisposed) {
       return;
     }
+    if (!_canLoadAds) {
+      return;
+    }
     _rewardedRetryTimer?.cancel();
     await RewardedAd.load(
       adUnitId: _environment.adUnits.rewardedAdUnitId,
@@ -258,6 +287,9 @@ class AdService extends ChangeNotifier {
     String placement = 'run_end',
   }) async {
     if (_isDisposed) {
+      return;
+    }
+    if (!_adsAllowed) {
       return;
     }
 
@@ -388,6 +420,9 @@ class AdService extends ChangeNotifier {
     if (_isDisposed) {
       return;
     }
+    if (!_canLoadAds) {
+      return;
+    }
     final delay = _retryDelay(_bannerRetryDelay, _bannerLoadAttempts);
     _bannerLoadAttempts = math.min(_bannerLoadAttempts + 1, 6);
     _bannerRetryTimer?.cancel();
@@ -399,6 +434,9 @@ class AdService extends ChangeNotifier {
 
   void _scheduleInterstitialReload() {
     if (_isDisposed) {
+      return;
+    }
+    if (!_canLoadAds) {
       return;
     }
     final delay = _retryDelay(
@@ -417,6 +455,9 @@ class AdService extends ChangeNotifier {
     if (_isDisposed) {
       return;
     }
+    if (!_canLoadAds) {
+      return;
+    }
     final delay = _retryDelay(_rewardedRetryDelay, _rewardedLoadAttempts);
     _rewardedLoadAttempts = math.min(_rewardedLoadAttempts + 1, 6);
     _rewardedRetryTimer?.cancel();
@@ -424,6 +465,66 @@ class AdService extends ChangeNotifier {
       _rewardedRetryTimer = null;
       _loadRewarded();
     });
+  }
+
+  void syncWallet(PlayerWallet? wallet) {
+    _bindWallet(wallet);
+  }
+
+  void _bindWallet(PlayerWallet? wallet) {
+    if (identical(wallet, _wallet)) {
+      return;
+    }
+    if (_walletListener != null && _wallet != null) {
+      _wallet!.removeListener(_walletListener!);
+    }
+    _wallet = wallet;
+    if (wallet != null) {
+      _walletListener = () {
+        _handleWalletStateChange();
+      };
+      wallet.addListener(_walletListener!);
+    } else {
+      _walletListener = null;
+    }
+    _handleWalletStateChange();
+  }
+
+  void _handleWalletStateChange() {
+    final allowed = _adsAllowed;
+    if (_adsAllowedCache == allowed) {
+      return;
+    }
+    _adsAllowedCache = allowed;
+    if (!allowed) {
+      _teardownAds();
+    } else if (!_initializing && !_isDisposed) {
+      if (_bannerAd == null) {
+        unawaited(_loadBanner());
+      }
+      if (_interstitialAd == null) {
+        unawaited(_loadInterstitial());
+      }
+      if (_rewardedAd == null) {
+        unawaited(_loadRewarded());
+      }
+    }
+    _safeNotify();
+  }
+
+  void _teardownAds() {
+    _bannerRetryTimer?.cancel();
+    _interstitialRetryTimer?.cancel();
+    _rewardedRetryTimer?.cancel();
+    _bannerRetryTimer = null;
+    _interstitialRetryTimer = null;
+    _rewardedRetryTimer = null;
+    _bannerAd?.dispose();
+    _interstitialAd?.dispose();
+    _rewardedAd?.dispose();
+    _bannerAd = null;
+    _interstitialAd = null;
+    _rewardedAd = null;
   }
 
   Duration _retryDelay(Duration base, int attempts) {
@@ -442,12 +543,11 @@ class AdService extends ChangeNotifier {
   @override
   void dispose() {
     _isDisposed = true;
-    _bannerRetryTimer?.cancel();
-    _interstitialRetryTimer?.cancel();
-    _rewardedRetryTimer?.cancel();
-    _bannerAd?.dispose();
-    _interstitialAd?.dispose();
-    _rewardedAd?.dispose();
+    if (_walletListener != null && _wallet != null) {
+      _wallet!.removeListener(_walletListener!);
+    }
+    _walletListener = null;
+    _teardownAds();
     super.dispose();
   }
 }
