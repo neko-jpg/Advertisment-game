@@ -493,11 +493,22 @@ class GameController extends ChangeNotifier {
 
   void _updateObstacles(double dt) {
     final double shift = -_scrollSpeed * dt;
+    final List<Obstacle> spawned = [];
     for (final obstacle in _obstacles) {
       obstacle.translate(shift);
-      obstacle.update(dt);
+      spawned.addAll(
+        obstacle.update(
+          dt,
+          playerPosition: _playerPosition,
+        ),
+      );
     }
-    _obstacles.removeWhere((obstacle) => obstacle.rect.right < -80);
+    if (spawned.isNotEmpty) {
+      _obstacles.addAll(spawned);
+    }
+    _obstacles.removeWhere(
+      (obstacle) => obstacle.rect.right < -80 || obstacle.isExpired,
+    );
 
     _spawnTimer -= dt;
     if (_spawnTimer <= 0) {
@@ -570,7 +581,7 @@ class GameController extends ChangeNotifier {
     if (!_tutorialCompleted) {
       switch (_tutorialStage) {
         case TutorialStage.draw:
-          obstacle = _buildHoveringShard();
+          obstacle = _buildFloater(gentle: true);
           break;
         case TutorialStage.coin:
           obstacle = _buildGroundBlock(gentle: true);
@@ -583,14 +594,28 @@ class GameController extends ChangeNotifier {
     } else {
       final bool earlySession = _score < 180;
       final double roll = _random.nextDouble();
-      if (earlySession || roll > 0.75) {
-        obstacle = _buildGroundBlock(gentle: earlySession);
-      } else if (roll < 0.28) {
-        obstacle = _buildMovingHazard();
-      } else if (roll < 0.5) {
-        obstacle = _buildCeilingBarrier();
+      if (earlySession) {
+        if (roll < 0.55) {
+          obstacle = _buildGroundBlock(gentle: true);
+        } else if (roll < 0.82) {
+          obstacle = _buildHopper(gentle: true);
+        } else {
+          obstacle = _buildFloater(gentle: true);
+        }
       } else {
-        obstacle = _buildHoveringShard();
+        if (roll < 0.22) {
+          obstacle = _buildGroundBlock();
+        } else if (roll < 0.42) {
+          obstacle = _buildHopper();
+        } else if (roll < 0.58) {
+          obstacle = _buildFloater();
+        } else if (roll < 0.72) {
+          obstacle = _buildMovingHazard();
+        } else if (roll < 0.86) {
+          obstacle = _buildSpitter();
+        } else {
+          obstacle = _buildCeilingBarrier();
+        }
       }
     }
     _obstacles.add(obstacle);
@@ -601,7 +626,9 @@ class GameController extends ChangeNotifier {
     }
 
     final double coinRoll = _random.nextDouble();
-    if (obstacle.behavior == ObstacleBehavior.groundBlock) {
+    if (obstacle.behavior == ObstacleBehavior.groundBlock ||
+        obstacle.behavior == ObstacleBehavior.hopper ||
+        obstacle.behavior == ObstacleBehavior.spitter) {
       if (coinRoll < 0.55) {
         _spawnCoinTrail(obstacle, ascending: coinRoll < 0.3);
       } else if (coinRoll < 0.85) {
@@ -609,7 +636,7 @@ class GameController extends ChangeNotifier {
         final double coinX = obstacle.rect.left + obstacle.rect.width * 0.6;
         _coins.add(Coin(position: Offset(coinX, coinY)));
       }
-    } else {
+    } else if (obstacle.behavior != ObstacleBehavior.spitProjectile) {
       if (coinRoll < 0.7) {
         _spawnCoinTrail(
           obstacle,
@@ -632,6 +659,28 @@ class GameController extends ChangeNotifier {
     );
   }
 
+  Obstacle _buildHopper({bool gentle = false}) {
+    final double width =
+        (gentle ? 46 : 40) + _random.nextDouble() * (gentle ? 14 : 26);
+    final double height =
+        (gentle ? 58 : 66) + _random.nextDouble() * (gentle ? 18 : 28);
+    final double left = _viewport.width + width + 70;
+    final double restTop = (_groundY + _playerRadius) - height;
+    final double hopInterval =
+        (gentle ? 1.8 : 1.3) + _random.nextDouble() * (gentle ? 0.9 : 0.7);
+    return Obstacle(
+      rect: Rect.fromLTWH(left, restTop, width, height),
+      behavior: ObstacleBehavior.hopper,
+      hopperConfig: HopperConfig(
+        restTop: restTop,
+        jumpVelocity: (gentle ? 520 : 620) + _random.nextDouble() * 90,
+        gravity: 1650 + _random.nextDouble() * 220,
+        hopInterval: hopInterval,
+        triggerDistance: 210 + _random.nextDouble() * 90,
+      ),
+    );
+  }
+
   Obstacle _buildMovingHazard() {
     final double size = 42 + _random.nextDouble() * 22;
     final double left = _viewport.width + size + 64;
@@ -651,23 +700,47 @@ class GameController extends ChangeNotifier {
     );
   }
 
-  Obstacle _buildHoveringShard() {
+  Obstacle _buildFloater({bool gentle = false}) {
     final double width = 34 + _random.nextDouble() * 28;
     final double height = 52 + _random.nextDouble() * 24;
     final double left = _viewport.width + width + 92;
     final double baseTop = math.max(
       80,
-      _groundY - (150 + _random.nextDouble() * 90),
+      _groundY - ((gentle ? 130 : 160) + _random.nextDouble() * (gentle ? 70 : 110)),
     );
-    final double amplitude = 28 + _random.nextDouble() * 36;
-    final double frequency = 0.8 + _random.nextDouble() * 0.6;
+    final double amplitude =
+        (gentle ? 24 : 32) + _random.nextDouble() * (gentle ? 24 : 40);
+    final double frequency = (gentle ? 0.6 : 0.85) + _random.nextDouble() * 0.55;
     return Obstacle(
       rect: Rect.fromLTWH(left, baseTop, width, height),
-      behavior: ObstacleBehavior.hoveringShard,
+      behavior: ObstacleBehavior.floater,
       anchor: Offset(left, baseTop),
       amplitude: amplitude,
       frequency: frequency,
       phase: _random.nextDouble() * math.pi * 2,
+    );
+  }
+
+  Obstacle _buildSpitter() {
+    final double width = 52 + _random.nextDouble() * 24;
+    final double height = 58 + _random.nextDouble() * 24;
+    final double left = _viewport.width + width + 86;
+    final double top = (_groundY + _playerRadius) - height;
+    final double fireInterval = 1.6 + _random.nextDouble() * 0.9;
+    return Obstacle(
+      rect: Rect.fromLTWH(left, top, width, height),
+      behavior: ObstacleBehavior.spitter,
+      spitterConfig: SpitterConfig(
+        fireInterval: fireInterval,
+        triggerDistance: 240 + _random.nextDouble() * 120,
+        projectileSpeed: 320 + _random.nextDouble() * 80,
+        projectileLifetime: 0.85 + _random.nextDouble() * 0.35,
+        projectileSize: Size(
+          26 + _random.nextDouble() * 10,
+          48 + _random.nextDouble() * 18,
+        ),
+        initialDelay: 0.6 + _random.nextDouble() * 0.9,
+      ),
     );
   }
 
@@ -693,7 +766,9 @@ class GameController extends ChangeNotifier {
     if (obstacle.behavior == ObstacleBehavior.ceiling) {
       startY = obstacle.rect.bottom + 40;
       ascending = false;
-    } else if (obstacle.behavior == ObstacleBehavior.groundBlock) {
+    } else if (obstacle.behavior == ObstacleBehavior.groundBlock ||
+        obstacle.behavior == ObstacleBehavior.hopper ||
+        obstacle.behavior == ObstacleBehavior.spitter) {
       startY = math.max(60, obstacle.rect.top - 48);
     } else {
       startY = obstacle.rect.center.dy;
