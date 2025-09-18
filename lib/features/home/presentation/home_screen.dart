@@ -7,6 +7,8 @@ import '../../../core/analytics/analytics_service.dart';
 import '../../../game/game_controller.dart';
 import '../../../game/game_painter.dart';
 import '../../../game/audio/sound_controller.dart';
+import '../../../game/state/meta_state.dart';
+import '../../../game/story/story_fragment.dart';
 import '../../../services/ad_service.dart';
 import '../../../services/player_wallet.dart';
 import '../../store/storefront_sheet.dart';
@@ -35,12 +37,14 @@ class _HomeScreenState extends State<HomeScreen>
     _adService = context.read<AdService>();
     _wallet = context.read<PlayerWallet>();
     _analytics = context.read<AnalyticsService>();
+    final meta = context.read<MetaProvider>();
     _controller = GameController(
       vsync: this,
       soundController: _soundController,
       adService: _adService,
       analytics: _analytics,
       wallet: _wallet,
+      meta: meta,
     )..initialize();
     if (!_adService.isInitialized) {
       unawaited(_adService.initialize());
@@ -169,6 +173,7 @@ class _GameViewport extends StatelessWidget {
                   ),
                 if (controller.phase == GamePhase.gameOver)
                   const _GameOverOverlay(),
+                const _StoryFragmentOverlay(),
               ],
             );
           },
@@ -931,6 +936,114 @@ class _SummaryRow extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _StoryFragmentOverlay extends StatelessWidget {
+  const _StoryFragmentOverlay();
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<MetaProvider>(
+      builder: (context, meta, _) {
+        final fragment = meta.pendingStoryFragment;
+        if (fragment == null) {
+          return const SizedBox.shrink();
+        }
+        return Positioned.fill(
+          child: Container(
+            color: Colors.black.withOpacity(0.85),
+            padding: const EdgeInsets.all(24),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: _StoryFragmentCard(fragment: fragment),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _StoryFragmentCard extends StatelessWidget {
+  const _StoryFragmentCard({required this.fragment});
+
+  final StoryFragment fragment;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final textTheme = theme.textTheme;
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFF111827).withOpacity(0.92),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: Colors.white.withOpacity(0.08)),
+          boxShadow: const [
+            BoxShadow(
+              color: Colors.black54,
+              blurRadius: 24,
+              offset: Offset(0, 12),
+            ),
+          ],
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 32),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+            Text(
+              '断章を解放しました',
+              style: textTheme.titleSmall?.copyWith(
+                color: Colors.amberAccent,
+                letterSpacing: 1.4,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              fragment.title,
+              style: textTheme.headlineSmall?.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.06),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+              child: Text(
+                fragment.body,
+                style: textTheme.bodyMedium?.copyWith(
+                  color: Colors.white.withOpacity(0.9),
+                  height: 1.4,
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () =>
+                    context.read<MetaProvider>().markStoryFragmentViewed(
+                          fragment.id,
+                        ),
+                child: const Text('走り続ける'),
+              ),
+            ),
+            ],
+          ),
+        ),
       ),
     );
   }
