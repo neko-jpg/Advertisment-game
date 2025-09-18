@@ -100,8 +100,23 @@ class _HomeScreenState extends State<HomeScreen>
   }
 }
 
-class _GameViewport extends StatelessWidget {
+class _GameViewport extends StatefulWidget {
   const _GameViewport();
+
+  @override
+  State<_GameViewport> createState() => _GameViewportState();
+}
+
+class _GameViewportState extends State<_GameViewport> {
+  static const double _kJumpZoneRatio = 0.45;
+  static const double _kDrawActivationThreshold = 18.0;
+
+  int? _activePointer;
+  Offset? _panOrigin;
+  bool _lineStarted = false;
+  bool _lineStartAttempted = false;
+  bool _panInDrawingZone = false;
+  bool _pointerLocked = false;
 
   @override
   Widget build(BuildContext context) {
@@ -128,19 +143,19 @@ class _GameViewport extends StatelessWidget {
                   ignoring: !allowInput,
                   child: GestureDetector(
                     behavior: HitTestBehavior.opaque,
-                    onTapDown:
-                        (details) =>
-                            _handleTapDown(controller, details, viewport),
-                    onTapUp: (_) => controller.endLine(),
-                    onTapCancel: controller.endLine,
-                    onPanStart:
-                        (details) =>
-                            _handlePanStart(controller, details, viewport),
-                    onPanUpdate:
-                        (details) =>
-                            controller.extendLine(details.localPosition),
-                    onPanCancel: controller.endLine,
-                    onPanEnd: (_) => controller.endLine(),
+                    onTapDown: (details) =>
+                        _handleTapDown(controller, details, viewport),
+                    onTapUp: (_) => _handleTapEnd(controller),
+                    onTapCancel: () => _handleTapEnd(controller),
+                    onPanDown: (details) =>
+                        _handlePanDown(controller, details, viewport),
+                    onPanStart: (details) =>
+                        _handlePanStart(controller, details, viewport),
+                    onPanUpdate: (details) =>
+                        _handlePanUpdate(controller, details, viewport),
+                    onPanCancel: () => _handlePanCancel(controller),
+                    onPanEnd: (details) =>
+                        _handlePanEnd(controller, details),
                     child: AnimatedBuilder(
                       animation: controller,
                       builder: (context, _) {
@@ -181,37 +196,122 @@ class _GameViewport extends StatelessWidget {
       },
     );
   }
-}
 
-void _handleTapDown(
-  GameController controller,
-  TapDownDetails details,
-  Size viewport,
-) {
-  if (controller.phase == GamePhase.ready) {
-    controller.startGame();
-    return;
+  void _handleTapDown(
+    GameController controller,
+    TapDownDetails details,
+    Size viewport,
+  ) {
+    if (_pointerLocked) {
+      return;
+    }
+    _pointerLocked = true;
+    if (controller.phase == GamePhase.ready) {
+      controller.startGame();
+      return;
+    }
+    if (controller.phase != GamePhase.running) {
+      return;
+    }
+    if (details.localPosition.dx < viewport.width * _kJumpZoneRatio) {
+      controller.jump();
+    }
   }
-  if (controller.phase != GamePhase.running) {
-    return;
-  }
-  if (details.localPosition.dx < viewport.width * 0.45) {
-    controller.jump();
-  }
-}
 
-void _handlePanStart(
-  GameController controller,
-  DragStartDetails details,
-  Size viewport,
-) {
-  if (controller.phase != GamePhase.running) {
-    return;
+  void _handleTapEnd(GameController controller) {
+    if (_lineStarted) {
+      controller.endLine();
+    }
+    _resetPointerTracking();
   }
-  if (details.localPosition.dx < viewport.width * 0.45) {
-    controller.jump();
-  } else {
-    controller.startLine(details.localPosition);
+
+  void _handlePanDown(
+    GameController controller,
+    DragDownDetails details,
+    Size viewport,
+  ) {
+    if (_activePointer != null && details.pointer != _activePointer) {
+      return;
+    }
+    _pointerLocked = true;
+    _activePointer = details.pointer;
+    _panOrigin = details.localPosition;
+    _lineStarted = false;
+    _lineStartAttempted = false;
+    _panInDrawingZone =
+        details.localPosition.dx >= viewport.width * _kJumpZoneRatio;
+  }
+
+  void _handlePanStart(
+    GameController controller,
+    DragStartDetails details,
+    Size viewport,
+  ) {
+    if (_activePointer != null && details.pointer != _activePointer) {
+      return;
+    }
+    if (controller.phase != GamePhase.running) {
+      return;
+    }
+    if (!_panInDrawingZone) {
+      controller.jump();
+    }
+  }
+
+  void _handlePanUpdate(
+    GameController controller,
+    DragUpdateDetails details,
+    Size viewport,
+  ) {
+    if (_activePointer != null && details.pointer != _activePointer) {
+      return;
+    }
+    if (controller.phase != GamePhase.running) {
+      return;
+    }
+    if (!_panInDrawingZone) {
+      return;
+    }
+
+    final Offset position = details.localPosition;
+    final Offset origin = _panOrigin ?? position;
+
+    if (!_lineStarted) {
+      final double travel = (position - origin).distance;
+      if (!_lineStartAttempted && travel >= _kDrawActivationThreshold) {
+        _lineStartAttempted = true;
+        if (controller.startLine(origin)) {
+          _lineStarted = true;
+          controller.extendLine(position);
+        }
+      }
+      return;
+    }
+
+    controller.extendLine(position);
+  }
+
+  void _handlePanEnd(GameController controller, DragEndDetails _) {
+    if (_lineStarted) {
+      controller.endLine();
+    }
+    _resetPointerTracking();
+  }
+
+  void _handlePanCancel(GameController controller) {
+    if (_lineStarted) {
+      controller.endLine();
+    }
+    _resetPointerTracking();
+  }
+
+  void _resetPointerTracking() {
+    _pointerLocked = false;
+    _activePointer = null;
+    _panOrigin = null;
+    _lineStarted = false;
+    _lineStartAttempted = false;
+    _panInDrawingZone = false;
   }
 }
 
