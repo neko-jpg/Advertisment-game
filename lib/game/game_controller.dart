@@ -65,6 +65,7 @@ class GameController extends ChangeNotifier {
 
   final List<Obstacle> _obstacles = <Obstacle>[];
   final List<Coin> _coins = <Coin>[];
+  final List<LandingDust> _landingDust = <LandingDust>[];
   final math.Random _random = math.Random();
 
   double _scrollSpeed = 240;
@@ -112,6 +113,8 @@ class GameController extends ChangeNotifier {
   UnmodifiableListView<Obstacle> get obstacles =>
       UnmodifiableListView(_obstacles);
   UnmodifiableListView<Coin> get coins => UnmodifiableListView(_coins);
+  UnmodifiableListView<LandingDust> get landingDust =>
+      UnmodifiableListView(_landingDust);
 
   Future<void> initialize() async {
     _phase = GamePhase.loading;
@@ -323,6 +326,7 @@ class GameController extends ChangeNotifier {
     _activeLine = null;
     _ink = 1.0;
     _inkCooldown = 0;
+    _landingDust.clear();
     _obstacles.removeWhere(
       (obstacle) => obstacle.rect.left < _playerPosition.dx + 120,
     );
@@ -347,6 +351,7 @@ class GameController extends ChangeNotifier {
     _activeLine = null;
     _ink = 1.0;
     _inkCooldown = 0;
+    _landingDust.clear();
     _scrollSpeed = 240;
     _spawnTimer = 1.0;
     _score = 0;
@@ -384,8 +389,10 @@ class GameController extends ChangeNotifier {
   }
 
   void _update(double dt) {
+    final bool wasOnGround = _onGround;
     // Physics
     _velocityY += _gravity * dt;
+    final double velocityBeforeCollision = _velocityY;
     _playerPosition = _playerPosition.translate(0, _velocityY * dt);
 
     final double groundLine = _groundY;
@@ -407,6 +414,12 @@ class GameController extends ChangeNotifier {
 
     _updateLines(dt);
     _applyLineSupport();
+
+    if (!wasOnGround && _onGround) {
+      _registerLandingImpact(velocityBeforeCollision);
+    }
+
+    _updateLandingDust(dt);
 
     _updateInk(dt);
     _updateObstacles(dt);
@@ -464,6 +477,36 @@ class GameController extends ChangeNotifier {
         }
       }
     }
+  }
+
+  void _registerLandingImpact(double velocityBeforeCollision) {
+    final double downwardSpeed = math.max(0, velocityBeforeCollision);
+    if (downwardSpeed < 180) {
+      return;
+    }
+    final double normalizedIntensity =
+        (downwardSpeed / 900).clamp(0.35, 1.0);
+    final LandingDust dust = LandingDust(
+      position: Offset(
+        _playerPosition.dx,
+        _playerPosition.dy + _playerRadius,
+      ),
+      intensity: normalizedIntensity,
+    );
+    _landingDust.add(dust);
+    if (_landingDust.length > 6) {
+      _landingDust.removeRange(0, _landingDust.length - 6);
+    }
+  }
+
+  void _updateLandingDust(double dt) {
+    if (_landingDust.isEmpty) {
+      return;
+    }
+    for (final LandingDust dust in _landingDust) {
+      dust.update(dt);
+    }
+    _landingDust.removeWhere((dust) => dust.isFinished);
   }
 
   void _updateInk(double dt) {

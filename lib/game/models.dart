@@ -72,6 +72,28 @@ class DrawnLine {
   final DateTime createdAt;
 }
 
+class LandingDust {
+  LandingDust({
+    required this.position,
+    required this.intensity,
+    this.lifetime = 0.6,
+  })  : assert(intensity > 0),
+        elapsed = 0;
+
+  final Offset position;
+  final double intensity;
+  final double lifetime;
+  double elapsed;
+
+  double get progress => (elapsed / lifetime).clamp(0.0, 1.0);
+
+  bool get isFinished => elapsed >= lifetime;
+
+  void update(double dt) {
+    elapsed += dt;
+  }
+}
+
 class Obstacle {
   Obstacle({
     required this.rect,

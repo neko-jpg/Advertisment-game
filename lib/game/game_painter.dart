@@ -12,6 +12,7 @@ class GamePainter extends CustomPainter {
     required this.lines,
     required this.obstacles,
     required this.coins,
+    required this.landingDust,
     required this.inkLevel,
     required this.groundY,
     required this.elapsed,
@@ -22,6 +23,7 @@ class GamePainter extends CustomPainter {
   final List<DrawnLine> lines;
   final List<Obstacle> obstacles;
   final List<Coin> coins;
+  final List<LandingDust> landingDust;
   final double inkLevel;
   final double groundY;
   final double elapsed;
@@ -92,6 +94,10 @@ class GamePainter extends CustomPainter {
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12);
   static final Paint _ceilingPaint =
       Paint()..color = const Color(0xFF1E40AF).withOpacity(0.85);
+  static final Paint _dustRingPaint =
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -100,6 +106,7 @@ class GamePainter extends CustomPainter {
     _drawLines(canvas);
     _drawObstacles(canvas);
     _drawCoins(canvas);
+    _drawLandingDust(canvas);
     _drawPlayer(canvas);
   }
 
@@ -242,6 +249,63 @@ class GamePainter extends CustomPainter {
       _coinPaint.shader = gradient.createShader(rect);
       canvas.drawCircle(coin.position, coin.radius, _coinPaint);
       canvas.drawCircle(coin.position, coin.radius + 4, _coinHaloPaint);
+    }
+  }
+
+  void _drawLandingDust(Canvas canvas) {
+    if (landingDust.isEmpty) {
+      return;
+    }
+    for (final LandingDust dust in landingDust) {
+      final double progress = dust.progress;
+      final double fade = 1 - progress;
+      final double intensity = dust.intensity.clamp(0.2, 1.4);
+      final double spread =
+          lerpDouble(14, 44 * intensity, progress) ?? (44 * intensity);
+      final double height =
+          lerpDouble(18 * intensity, 6, progress) ?? (18 * intensity);
+      final Offset base = dust.position;
+
+      final Paint puffPaint = Paint()
+        ..color = Colors.white.withOpacity(0.18 + 0.32 * fade)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
+      final Paint groundGlow = Paint()
+        ..color = const Color(0xFF38BDF8).withOpacity(0.18 * fade)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 16);
+
+      final Rect leftRect = Rect.fromCenter(
+        center: Offset(base.dx - spread, base.dy - height * 0.38),
+        width: (lerpDouble(24, 40, progress) ?? 32) * intensity.clamp(0.8, 1.2),
+        height: height,
+      );
+      final Rect rightRect = Rect.fromCenter(
+        center: Offset(base.dx + spread, base.dy - height * 0.38),
+        width: (lerpDouble(24, 40, progress) ?? 32) * intensity.clamp(0.8, 1.2),
+        height: height,
+      );
+      canvas.drawOval(leftRect, puffPaint);
+      canvas.drawOval(rightRect, puffPaint);
+
+      canvas.drawOval(
+        Rect.fromCenter(
+          center: Offset(base.dx, base.dy + lerpDouble(2, 10, progress)!),
+          width: lerpDouble(18, 46, progress)!,
+          height: lerpDouble(6, 2, progress)!,
+        ),
+        groundGlow,
+      );
+
+      canvas.drawCircle(
+        Offset(base.dx, base.dy - height * 0.2),
+        lerpDouble(6 * intensity, 2, progress)!,
+        Paint()..color = Colors.white.withOpacity(0.24 * fade),
+      );
+
+      final double ringRadius = lerpDouble(0, 38 * intensity, progress)!;
+      if (ringRadius > 0) {
+        _dustRingPaint.color = const Color(0xFF38BDF8).withOpacity(0.28 * fade);
+        canvas.drawCircle(base, ringRadius, _dustRingPaint);
+      }
     }
   }
 
